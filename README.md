@@ -3,7 +3,7 @@
 **Atlas - Semantic Space Control Panel**: Интерфейс между абстрактным смыслом и конкретной формой.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3 / Commercial](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen.svg)]()
 [![API](https://img.shields.io/badge/API-FastAPI-009688.svg)]()
 
