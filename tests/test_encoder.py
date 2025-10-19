@@ -36,10 +36,10 @@ class TestSimpleSemanticEncoder:
         assert np.all(np.abs(vectors) <= 1.0)
     
     def test_encode_empty_text(self, encoder):
-        """Test encoding empty text"""
-        vector = encoder.encode_text("")
-        assert isinstance(vector, np.ndarray)
-        assert vector.shape == (5,)
+        """Test encoding empty text raises ValueError"""
+        import pytest
+        with pytest.raises(ValueError, match="Input text cannot be empty"):
+            encoder.encode_text("")
     
     def test_consistent_encoding(self, encoder):
         """Test that same text encodes consistently"""
