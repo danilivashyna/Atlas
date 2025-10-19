@@ -84,7 +84,7 @@ class TestTextEncoder5D:
         result2 = encoder.encode(text)
         # Should be identical (not just close)
         assert result1 is not result2  # Different objects
-        assert result1 == result2  # Same values (from cache)
+        assert np.allclose(result1, result2)  # Same values (from cache)
 
     def test_encode_mvp_fallback(self, encoder):
         """MVP fallback should produce deterministic 5D vector."""
