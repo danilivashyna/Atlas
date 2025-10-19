@@ -1,0 +1,124 @@
+name: Tests & Smoke
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
+
+      - name: Run pytest (unit + integration tests)
+        run: |
+          pytest tests/ -v --tb=short --cov=src/atlas --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  smoke:
+    name: API Smoke Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
+
+      - name: Start API server
+        run: |
+          uvicorn src.atlas.api.app:app --host 127.0.0.1 --port 8000 &
+          sleep 3  # Wait for server to start
+
+      - name: "Smoke test: /health endpoint"
+        run: |
+          response=$(curl -s http://127.0.0.1:8000/health)
+          echo "Response: $response"
+          if echo "$response" | grep -q '"status"'; then
+            echo "✅ /health passed"
+          else
+            echo "❌ /health failed"
+            exit 1
+          fi
+
+      - name: "Smoke test: /docs (Swagger UI)"
+        run: |
+          http_code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/docs)
+          if [ "$http_code" = "200" ]; then
+            echo "✅ /docs passed (HTTP $http_code)"
+          else
+            echo "❌ /docs failed (HTTP $http_code)"
+            exit 1
+          fi
+
+      - name: "Smoke test: /openapi.json"
+        run: |
+          response=$(curl -s http://127.0.0.1:8000/openapi.json)
+          if echo "$response" | grep -q '"paths"'; then
+            echo "✅ /openapi.json passed"
+          else
+            echo "❌ /openapi.json failed"
+            exit 1
+          fi
+
+  lint:
+    name: Code Quality (Black)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black==24.8.0
+
+      - name: Run Black formatter (check mode)
+        run: black --check src/atlas tests --line-length=100

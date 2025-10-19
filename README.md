@@ -33,7 +33,18 @@
 
 *Эти значения не жёсткие, а выявляемые обучением. Модель сама распределяет смысл между осями.*
 
-## 📊 Статус разработки (v0.1.0)
+## � Лицензирование (Dual License)
+
+Atlas распространяется под **двойной лицензией**:
+
+| Модель | Для кого | Условия |
+|--------|----------|---------|
+| **AGPLv3** | Открытый код | Свободное использование, распространение с исходниками |
+| **Commercial** | Проприетарные проекты | Закрытый исходник, платная лицензия |
+
+👉 **[Подробнее в docs/LICENSING.md](docs/LICENSING.md)** | Контакт: [danilivashyna@gmail.com](mailto:danilivashyna@gmail.com)
+
+## �📊 Статус разработки (v0.2.0a1)
 
 | Компонент | Статус | Детали |
 |-----------|--------|--------|
@@ -91,6 +102,40 @@ pip install -r requirements.txt
 
 # Установить пакет
 pip install -e .
+
+# Для разработки (опционально)
+# See: LOCAL_SETUP_COMPLETE.md for full dev guide
+make setup    # Create venv
+make dev      # Install dev dependencies
+make test     # Run test suite
+make api      # Start API server (http://localhost:8000/docs)
+```
+
+### Dev Setup для v0.2 (Hierarchical)
+
+Полный гайд локальной разработки: **[LOCAL_SETUP_COMPLETE.md](LOCAL_SETUP_COMPLETE.md)**
+
+```bash
+# 1. Клонировать и перейти в директорию
+git clone https://github.com/danilivashyna/Atlas.git
+cd Atlas
+
+# 2. Создать и активировать venv
+python -m venv .venv
+source .venv/bin/activate  # или .venv\Scripts\activate на Windows
+
+# 3. Установить зависимости
+pip install -U pip wheel
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# 4. Установить пакет + запустить тесты
+pip install -e .
+pytest tests/test_api_smoke.py -v
+
+# 5. Запустить API
+uvicorn src.atlas.api.app:app --reload --port 8000
+# Перейти на http://localhost:8000/docs для Swagger UI
 ```
 
 ## 💡 Быстрый старт
@@ -114,7 +159,7 @@ print(f"Текст: {result['text']}")
 
 # Манипулировать измерением
 result = space.manipulate_dimension(
-    "Собака", 
+    "Собака",
     dimension=1,  # Эмоциональный тон
     new_value=-0.9  # Сделать негативным
 )

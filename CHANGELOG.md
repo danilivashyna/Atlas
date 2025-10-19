@@ -5,6 +5,46 @@ All notable changes to Atlas - Semantic Space Control Panel will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0a1] - 2025-10-19
+
+### Added
+
+- **Hierarchical 5D Semantic Space (MVP)**
+  - `HierarchicalEncoder`: Text → deterministic 5D tree with child nodes
+  - `HierarchicalDecoder`: 5D tree → reasoning explanations per dimension
+  - `manipulate_path()`: Surgical edits on tree nodes
+- **REST API Hierarchical Endpoints**
+  - `POST /encode_h`: Encode text to hierarchical tree
+  - `POST /decode_h`: Decode tree to text + reasoning
+  - `POST /manipulate_h`: Edit tree dimensions
+- **Dual Licensing**
+  - AGPL-3.0-or-later for open-source use
+  - Commercial license option available
+  - SPDX headers on all Python files
+- **Testing Infrastructure**
+  - 6 smoke tests (all passing)
+  - `tests/conftest.py` for pytest fixtures
+  - API integration test suite
+- **Development Tools**
+  - Pre-commit hooks (Black formatter)
+  - Makefile with 8 build commands
+  - .pre-commit-config.yaml
+- **Documentation**
+  - `docs/HIERARCHICAL_SCHEMA_v0.2.md`: API schemas and examples
+  - `docs/GITHUB_ISSUES_v0.2.md`: 8 issues for future development
+  - `LOCAL_SETUP_COMPLETE.md`: Local development guide
+
+### Changed
+
+- pyproject.toml: License set to AGPL-3.0-or-later, email updated
+- requirements.txt: Added FastAPI, uvicorn, pytest, httpx, pre-commit
+- LICENSE: Updated to dual-license model with contact email
+
+### Fixed
+
+- Fixed pyproject.toml email validation errors
+- Fixed imports in API models
+
 ## [Unreleased]
 
 ### Added
