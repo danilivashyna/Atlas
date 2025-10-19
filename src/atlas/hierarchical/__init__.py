@@ -22,6 +22,7 @@ from .models import (
 )
 from .encoder import HierarchicalEncoder
 from .decoder import HierarchicalDecoder
+from .benchmark import HierarchicalBenchmark, print_benchmark_results
 
 __all__ = [
     "TreeNode",
@@ -36,4 +37,6 @@ __all__ = [
     "PathEdit",
     "HierarchicalEncoder",
     "HierarchicalDecoder",
+    "HierarchicalBenchmark",
+    "print_benchmark_results",
 ]
