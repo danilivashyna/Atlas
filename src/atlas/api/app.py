@@ -15,7 +15,8 @@ from importlib.metadata import version as pkg_version
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import numpy as np
 
 from atlas import SemanticSpace
@@ -103,6 +104,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files (favicon, etc.)
+try:
+    import os
+
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+except Exception as e:
+    pass  # Static files optional
 
 
 # Middleware for request tracking
@@ -479,13 +490,30 @@ async def manipulate_hierarchical(
         raise
 
 
+# Favicon endpoint
+@app.get("/favicon.ico", tags=["Static"])
+async def favicon():
+    """Serve favicon"""
+    try:
+        import os
+
+        static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
+        favicon_path = os.path.join(static_dir, "favicon.ico")
+        if os.path.exists(favicon_path):
+            return FileResponse(favicon_path, media_type="image/x-icon")
+    except Exception:
+        pass
+    # Fallback to 404
+    raise HTTPException(status_code=404, detail="Favicon not found")
+
+
 # Root endpoint
 @app.get("/", tags=["Info"])
 async def root():
     """API information endpoint"""
     return {
         "name": "Atlas Semantic Space API",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "description": "5D semantic space for interpretable text representations",
         "endpoints": {
             "encode": "POST /encode - Encode text to 5D vector",
