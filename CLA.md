@@ -24,4 +24,4 @@ By submitting a contribution, you agree to the following:
 
 *Effective Date:* Upon submission of your first contribution.  
 *Owner:* **Danil Ivashyna**  
-*Contact:* [your-email@example.com]
+*Contact:* [danil.ivashina@gmail.com]
