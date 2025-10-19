@@ -31,7 +31,8 @@ class TestHealthEndpoints:
         data = response.json()
         assert "name" in data
         assert "version" in data
-        assert data["version"] == "0.2.0a1"  # Dynamic version
+        assert isinstance(data["version"], str)
+        assert len(data["version"]) > 0  # Version should be non-empty
 
     def test_health_endpoint(self, client):
         """Test health check endpoint"""
