@@ -3,7 +3,7 @@
 **Atlas - Semantic Space Control Panel**: Интерфейс между абстрактным смыслом и конкретной формой.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3 / Commercial](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen.svg)]()
 [![API](https://img.shields.io/badge/API-FastAPI-009688.svg)]()
 
@@ -14,6 +14,7 @@
 ## 🌟 Особенности
 
 - **5-мерное семантическое пространство** — каждая ось представляет отдельное измерение смысла
+- **Иерархическое пространство (NEW!)** — "матрёшка 5D" с рекурсивными под-измерениями
 - **Интерпретируемый декодер** — объясняет, почему выбран именно этот смысл
 - **Визуальный интерфейс** — для исследования и манипуляции смысловым пространством
 - **Осознанная настройка мышления** — можно вручную менять оси, "вращая" смысл
@@ -40,14 +41,17 @@
 | ├─ Encoder (rule-based) | ✅ Готов | Простой эвристический энкодер |
 | ├─ Decoder (interpretable) | ✅ Готов | Декодирование с объяснениями |
 | ├─ Semantic Space | ✅ Готов | 5D пространство операций |
-| └─ Dimensions | ✅ Готов | Интерпретация измерений |
+| ├─ Dimensions | ✅ Готов | Интерпретация измерений |
+| ├─ Hierarchical Encoder | ✅ Готов | Иерархическое кодирование |
+| ├─ Hierarchical Decoder | ✅ Готов | Декодирование по путям |
+| └─ Hierarchical API | ✅ Готов | /encode_h, /decode_h, /manipulate_h |
 | **API** | | |
 | ├─ REST API (FastAPI) | ✅ Готов | /encode, /decode, /explain |
 | ├─ Health checks | ✅ Готов | /health, /ready, /metrics |
 | ├─ Request validation | ✅ Готов | Pydantic models |
 | └─ Error handling | ✅ Готов | Graceful degradation |
 | **Testing** | | |
-| ├─ Unit tests | ✅ 45 тестов | Encoder, decoder, space |
+| ├─ Unit tests | ✅ 50 тестов | Encoder, decoder, space, hierarchical |
 | ├─ Golden samples | ✅ 16 тестов | Регрессионные тесты |
 | ├─ API tests | ✅ 20 тестов | Integration tests |
 | └─ Coverage | ✅ > 80% | Основной функционал |
@@ -67,6 +71,9 @@
 | ├─ Neural encoder | 🔄 В плане | BERT-based |
 | ├─ Neural decoder | 🔄 В плане | Transformer |
 | ├─ Disentanglement training | 🔄 В плане | β-TC-VAE |
+| ├─ Hierarchical losses | 🔄 В плане | Ortho/sparsity/router |
+| ├─ Hierarchical metrics | 🔄 В плане | H-Coherence, H-Stability |
+| ├─ Distillation | 🔄 В плане | Teacher→Hierarchical |
 | ├─ Metrics implementation | 🔄 В плане | Coherence, stability |
 | └─ Human evaluation | 🔄 В плане | Аннотация |
 
@@ -114,6 +121,38 @@ result = space.manipulate_dimension(
 print(f"Изменено: {result['modified']['decoded']['text']}")
 ```
 
+### Hierarchical API (NEW!)
+
+```python
+from atlas.hierarchical import HierarchicalEncoder, HierarchicalDecoder
+
+# Инициализация
+encoder = HierarchicalEncoder()
+decoder = HierarchicalDecoder()
+
+# Кодирование в иерархическое дерево
+tree = encoder.encode_hierarchical(
+    "Собака",
+    max_depth=2,              # Глубина дерева
+    expand_threshold=0.2      # Порог для раскрытия веток
+)
+
+# Декодирование с объяснением по путям
+result = decoder.decode_hierarchical(tree, top_k=3, with_reasoning=True)
+print(f"Текст: {result['text']}")
+for r in result['reasoning']:
+    print(f"  {r.path}: {r.label} (вес={r.weight:.2f})")
+
+# Манипуляция по пути (хирургическая правка)
+modified_tree = decoder.manipulate_path(
+    tree,
+    path="dim2/dim2.4",  # Конкретная ветка
+    new_value=[0.9, 0.1, -0.2, 0.0, 0.0]
+)
+modified_result = decoder.decode_hierarchical(modified_tree)
+print(f"Изменено: {modified_result['text']}")
+```
+
 ### REST API
 
 ```bash
@@ -134,6 +173,19 @@ curl -X POST "http://localhost:8000/decode" \
 curl -X POST "http://localhost:8000/explain" \
   -H "Content-Type: application/json" \
   -d '{"text": "Любовь"}'
+
+# Hierarchical endpoints (NEW!)
+curl -X POST "http://localhost:8000/encode_h" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Собака", "max_depth": 2, "expand_threshold": 0.2}'
+
+curl -X POST "http://localhost:8000/decode_h" \
+  -H "Content-Type: application/json" \
+  -d '{"tree": {...}, "top_k": 3}'
+
+curl -X POST "http://localhost:8000/manipulate_h" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Собака", "edits": [{"path": "dim2/dim2.4", "value": [0.9,0.1,-0.2,0.0,0.0]}]}'
 
 # Документация API: http://localhost:8000/docs
 ```
@@ -161,6 +213,11 @@ atlas interpolate "Любовь" "Ненависть" --steps 5
 
 # Исследовать измерение
 atlas explore "Жизнь" --dimension 4 --steps 7
+
+# Hierarchical commands (NEW!)
+atlas encode-h "Любовь" --max-depth 2 --expand-threshold 0.2
+atlas decode-h --input tree.json --top-k 3 --reasoning
+atlas manipulate-h "Собака" --edit dim2/dim2.4=0.9,0.1,-0.2,0.0,0.0 --reasoning
 ```
 
 ## 📊 Примеры
@@ -297,6 +354,7 @@ atlas/
 | [docs/DATA_CARD.md](docs/DATA_CARD.md) | Описание данных для обучения |
 | [docs/DISENTANGLEMENT.md](docs/DISENTANGLEMENT.md) | Методология разделения семантических измерений |
 | [docs/INTERPRETABILITY_METRICS.md](docs/INTERPRETABILITY_METRICS.md) | Метрики интерпретируемости |
+| [docs/HIERARCHICAL_SPACE.md](docs/HIERARCHICAL_SPACE.md) | Иерархическое семантическое пространство (NEW!) |
 
 ### API документация
 

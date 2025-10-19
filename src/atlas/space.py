@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 Danil Ivashyna
+
 """
 Semantic Space - The 5D space where meaning moves
 

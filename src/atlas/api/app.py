@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 Danil Ivashyna
+
 """
 Atlas FastAPI Application
 
@@ -17,6 +20,16 @@ import numpy as np
 
 from atlas import SemanticSpace
 from atlas.dimensions import DimensionMapper, SemanticDimension
+from atlas.hierarchical import (
+    HierarchicalEncoder,
+    HierarchicalDecoder,
+    EncodeHierarchicalRequest,
+    EncodeHierarchicalResponse,
+    DecodeHierarchicalRequest,
+    DecodeHierarchicalResponse,
+    ManipulateHierarchicalRequest,
+    ManipulateHierarchicalResponse,
+)
 from .models import (
     EncodeRequest, EncodeResponse,
     DecodeRequest, DecodeResponse, DimensionReasoning,
@@ -33,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 # Global state
 semantic_space = None
+hierarchical_encoder = None
+hierarchical_decoder = None
 metrics = {
     "requests_total": 0,
     "requests_by_endpoint": {},
@@ -44,12 +59,14 @@ metrics = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup/shutdown"""
-    global semantic_space
+    global semantic_space, hierarchical_encoder, hierarchical_decoder
     
     # Startup
     logger.info("Initializing Atlas Semantic Space...")
     try:
         semantic_space = SemanticSpace()
+        hierarchical_encoder = HierarchicalEncoder()
+        hierarchical_decoder = HierarchicalDecoder()
         logger.info("Atlas Semantic Space initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Semantic Space: {e}")
@@ -346,6 +363,150 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
         raise
 
 
+# Hierarchical API endpoints
+@app.post("/encode_h", response_model=EncodeHierarchicalResponse, tags=["Hierarchical Operations"])
+async def encode_hierarchical(request: EncodeHierarchicalRequest, req: Request) -> EncodeHierarchicalResponse:
+    """
+    Encode text into hierarchical 5D semantic tree.
+    
+    This endpoint converts input text into a hierarchical tree structure
+    where each node has a 5D vector and can have up to 5 children.
+    
+    **Parameters:**
+    - max_depth: Controls tree depth (0 = root only, 1 = root + children, etc.)
+    - expand_threshold: Router confidence threshold for expanding children (0.0-1.0)
+    
+    **Security**: Raw text is not logged, only metadata.
+    """
+    trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+    
+    try:
+        logger.info(f"Encoding hierarchical (trace_id={trace_id}, max_depth={request.max_depth})")
+        
+        tree = hierarchical_encoder.encode_hierarchical(
+            request.text,
+            max_depth=request.max_depth,
+            expand_threshold=request.expand_threshold
+        )
+        
+        return EncodeHierarchicalResponse(
+            tree=tree,
+            norm=True,
+            max_depth=request.max_depth,
+            trace_id=trace_id
+        )
+    
+    except Exception as e:
+        logger.error(f"Hierarchical encode failed (trace_id={trace_id}): {e}")
+        raise
+
+
+@app.post("/decode_h", response_model=DecodeHierarchicalResponse, tags=["Hierarchical Operations"])
+async def decode_hierarchical(request: DecodeHierarchicalRequest, req: Request) -> DecodeHierarchicalResponse:
+    """
+    Decode hierarchical tree back to text with path-wise reasoning.
+    
+    This endpoint reconstructs text from a hierarchical tree and provides
+    explanations for which paths contributed to the result.
+    
+    **Path Format**: Paths like 'dim2/dim2.4' indicate root dimension 2, child dimension 4.
+    
+    **Graceful Degradation**: If reasoning fails, returns text with explainable=false.
+    """
+    trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+    
+    try:
+        logger.info(f"Decoding hierarchical (trace_id={trace_id})")
+        
+        result = hierarchical_decoder.decode_hierarchical(
+            request.tree,
+            top_k=request.top_k,
+            with_reasoning=True
+        )
+        
+        return DecodeHierarchicalResponse(
+            text=result['text'],
+            reasoning=result.get('reasoning', []),
+            explainable=bool(result.get('reasoning')),
+            trace_id=trace_id
+        )
+    
+    except Exception as e:
+        logger.error(f"Hierarchical decode failed (trace_id={trace_id}): {e}")
+        
+        # Graceful degradation
+        try:
+            result = hierarchical_decoder.decode_hierarchical(
+                request.tree,
+                top_k=request.top_k,
+                with_reasoning=False
+            )
+            return DecodeHierarchicalResponse(
+                text=result['text'],
+                reasoning=[],
+                explainable=False,
+                trace_id=trace_id
+            )
+        except:
+            raise HTTPException(status_code=500, detail="Hierarchical decode failed completely")
+
+
+@app.post("/manipulate_h", response_model=ManipulateHierarchicalResponse, tags=["Hierarchical Operations"])
+async def manipulate_hierarchical(request: ManipulateHierarchicalRequest, req: Request) -> ManipulateHierarchicalResponse:
+    """
+    Manipulate specific paths in hierarchical tree and see how meaning changes.
+    
+    This allows surgical edits to specific branches of the semantic tree,
+    enabling fine-grained control over meaning.
+    
+    **Example edits:**
+    ```json
+    [
+        {"path": "dim2/dim2.4", "value": [0.9, 0.1, -0.2, 0.0, 0.0]},
+        {"path": "dim3", "value": [-0.5, 0.3, 0.8, 0.1, -0.2]}
+    ]
+    ```
+    """
+    trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+    
+    try:
+        logger.info(f"Manipulating hierarchical (trace_id={trace_id}, edits={len(request.edits)})")
+        
+        # Encode original
+        original_tree = hierarchical_encoder.encode_hierarchical(request.text, max_depth=2)
+        original_decoded = hierarchical_decoder.decode_hierarchical(original_tree, top_k=3)
+        
+        # Apply edits
+        modified_tree = original_tree
+        for edit in request.edits:
+            modified_tree = hierarchical_decoder.manipulate_path(
+                modified_tree,
+                edit.path,
+                edit.value
+            )
+        
+        # Decode modified
+        modified_decoded = hierarchical_decoder.decode_hierarchical(modified_tree, top_k=3)
+        
+        return ManipulateHierarchicalResponse(
+            original={
+                'text': request.text,
+                'tree': original_tree.model_dump(),
+                'decoded': original_decoded
+            },
+            modified={
+                'tree': modified_tree.model_dump(),
+                'decoded': modified_decoded,
+                'edits_applied': [e.model_dump() for e in request.edits]
+            },
+            trace_id=trace_id
+        )
+    
+    except Exception as e:
+        logger.error(f"Hierarchical manipulation failed (trace_id={trace_id}): {e}")
+        raise
+
+
 # Root endpoint
 @app.get("/", tags=["Info"])
 async def root():
@@ -358,10 +519,23 @@ async def root():
             "encode": "POST /encode - Encode text to 5D vector",
             "decode": "POST /decode - Decode vector to text with reasoning",
             "explain": "POST /explain - Explain text's semantic representation",
+            "encode_h": "POST /encode_h - Encode text to hierarchical tree (NEW)",
+            "decode_h": "POST /decode_h - Decode tree to text with path reasoning (NEW)",
+            "manipulate_h": "POST /manipulate_h - Manipulate tree paths (NEW)",
             "health": "GET /health - Health check",
             "ready": "GET /ready - Readiness check",
             "metrics": "GET /metrics - Prometheus metrics",
             "docs": "GET /docs - Interactive API documentation",
+        },
+        "hierarchical": {
+            "description": "Hierarchical semantic space (matryoshka 5D)",
+            "schema_version": "atlas-hier-2",
+            "features": [
+                "Multi-level semantic decomposition",
+                "Path-wise reasoning and explanations",
+                "Lazy expansion with router confidence",
+                "Surgical manipulation of semantic branches"
+            ]
         },
         "repository": "https://github.com/danilivashyna/Atlas"
     }
