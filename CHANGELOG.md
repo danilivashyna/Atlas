@@ -45,6 +45,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed pyproject.toml email validation errors
 - Fixed imports in API models
 
+## [0.2.0a2] - 2025-10-19 (In Development)
+
+### Added
+
+- **v0.2 Feature Branches & Draft PRs** 🚀
+  - 8 parallel feature tracks created with skeleton code
+  - Draft PRs #5-12 on GitHub ready for team assignment
+  - v0.2-01: TextEncoder5D (BERT-based 5D encoder) — PR #5
+  - v0.2-02: Transformer Decoder (5D→text + reasoning) — PR #6
+  - v0.2-03: Hierarchical API endpoints expansion — PR #7
+  - v0.2-04: Hierarchical losses (ortho, sparsity) — PR #8
+  - v0.2-05: Teacher→Student distillation pipeline — PR #9
+  - v0.2-06: Metrics (H-Coherence, H-Stability) — PR #10
+  - v0.2-07: Benchmarks suite (latency, interpretability) — PR #11
+  - v0.2-08: Docs, demos, CLI updates — PR #12
+
+### Fixed
+
+- Dynamic version loading via `importlib.metadata` (APP_VERSION)
+- Pydantic v2 migration: All models use `ConfigDict` (0 deprecation warnings)
+- Timezone-aware UTC timestamps: `datetime.now(timezone.utc)` pattern
+- NumPy array comparisons: `np.allclose()` for floating-point tolerance
+- Favicon support: StaticFiles mounted on `/static` (404→200)
+
+### Changed
+
+- Test assertions now support dynamic versioning (not hardcoded "0.1.0")
+- All Pydantic models comply with v2.0+ ConfigDict syntax
+- All timestamps follow ISO 8601 with Z suffix (UTC marker)
+
 ## [Unreleased]
 
 ### Added
