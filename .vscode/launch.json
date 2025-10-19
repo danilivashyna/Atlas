@@ -1,0 +1,54 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API (Uvicorn, reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["src.atlas.api.app:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "jinja": true,
+      "env": { "ATLAS_ENV": "dev", "PYTHONUNBUFFERED": "1" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Tests (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-v", "tests/"],
+      "jinja": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Example: Basic Usage",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/basic_usage.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Example: Comprehensive Demo",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/comprehensive_demo.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "CLI: encode",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "atlas.cli",
+      "args": ["encode", "Собака", "--explain"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "CLI: decode",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "atlas.cli",
+      "args": ["decode", "--vector", "0.1", "0.9", "-0.5", "0.2", "0.8", "--reasoning"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
