@@ -1,0 +1,159 @@
+{
+  "version": "0.1.0",
+  "description": "Golden samples for regression testing. These are expected encode/decode results that should remain stable across versions.",
+  "samples": [
+    {
+      "id": 1,
+      "text": "Собака",
+      "language": "ru",
+      "expected_vector": [-0.46, 0.0, 0.46, 0.0, 0.46],
+      "expected_decoded": "Собака",
+      "tolerance": 0.05,
+      "notes": "Basic Russian noun - animate, concrete"
+    },
+    {
+      "id": 2,
+      "text": "Любовь",
+      "language": "ru",
+      "expected_vector": [0.0, 0.46, 0.0, 0.0, 0.0],
+      "expected_decoded": "Любовь",
+      "tolerance": 0.05,
+      "notes": "Abstract emotion - positive sentiment"
+    },
+    {
+      "id": 3,
+      "text": "Машина",
+      "language": "ru",
+      "expected_vector": [-0.46, 0.0, 0.0, 0.0, -0.46],
+      "expected_decoded": "Машина",
+      "tolerance": 0.05,
+      "notes": "Concrete object - inanimate, mechanical"
+    },
+    {
+      "id": 4,
+      "text": "Радость",
+      "language": "ru",
+      "expected_vector": [0.0, 0.92, 0.0, 0.0, 0.0],
+      "expected_decoded": "Радость",
+      "tolerance": 0.05,
+      "notes": "Strong positive emotion"
+    },
+    {
+      "id": 5,
+      "text": "Страх",
+      "language": "ru",
+      "expected_vector": [0.0, -0.46, 0.0, 0.0, 0.0],
+      "expected_decoded": "Страх",
+      "tolerance": 0.05,
+      "notes": "Negative emotion"
+    },
+    {
+      "id": 6,
+      "text": "Кот",
+      "language": "ru",
+      "expected_vector": [-0.46, 0.0, 0.46, 0.0, 0.46],
+      "expected_decoded": "Кот",
+      "tolerance": 0.05,
+      "notes": "Animate object - similar to Собака"
+    },
+    {
+      "id": 7,
+      "text": "Жизнь",
+      "language": "ru",
+      "expected_vector": [0.0, 0.46, 0.0, 0.0, 0.46],
+      "expected_decoded": "Жизнь",
+      "tolerance": 0.05,
+      "notes": "Abstract concept - related to living"
+    },
+    {
+      "id": 8,
+      "text": "Смерть",
+      "language": "ru",
+      "expected_vector": [0.0, -0.46, 0.0, 0.0, -0.46],
+      "expected_decoded": "Смерть",
+      "tolerance": 0.05,
+      "notes": "Abstract concept - negative, opposite of life"
+    },
+    {
+      "id": 9,
+      "text": "Dog",
+      "language": "en",
+      "expected_vector": [-0.46, 0.0, 0.46, 0.0, 0.46],
+      "expected_decoded": "Dog",
+      "tolerance": 0.05,
+      "notes": "English equivalent of Собака"
+    },
+    {
+      "id": 10,
+      "text": "Love",
+      "language": "en",
+      "expected_vector": [0.0, 0.46, 0.0, 0.0, 0.0],
+      "expected_decoded": "Love",
+      "tolerance": 0.05,
+      "notes": "English equivalent of Любовь"
+    }
+  ],
+  "edge_cases": [
+    {
+      "id": "edge_1",
+      "text": "",
+      "language": "ru",
+      "expected_behavior": "error",
+      "error_type": "ValueError",
+      "notes": "Empty text should raise error"
+    },
+    {
+      "id": "edge_2",
+      "text": "A very long text that exceeds typical boundaries " + "repeated " * 100,
+      "language": "en",
+      "expected_behavior": "handle_gracefully",
+      "notes": "Should handle long text without crashing"
+    },
+    {
+      "id": "edge_3",
+      "text": "12345 !@#$%",
+      "language": "unknown",
+      "expected_behavior": "encode",
+      "notes": "Should handle non-word characters"
+    },
+    {
+      "id": "edge_4",
+      "vector": [999, 999, 999, 999, 999],
+      "expected_behavior": "normalize_or_error",
+      "notes": "Extreme vector values should be normalized or rejected"
+    },
+    {
+      "id": "edge_5",
+      "vector": [0, 0, 0, 0, 0],
+      "expected_behavior": "decode",
+      "notes": "Zero vector should decode to something meaningful"
+    }
+  ],
+  "invariants": [
+    {
+      "name": "vector_length",
+      "description": "All encoded vectors must have exactly 5 dimensions",
+      "check": "len(vector) == 5"
+    },
+    {
+      "name": "vector_normalization",
+      "description": "All vector values should be in range [-1, 1]",
+      "check": "all(-1 <= v <= 1 for v in vector)"
+    },
+    {
+      "name": "no_nan_inf",
+      "description": "Vectors should not contain NaN or Inf values",
+      "check": "not any(math.isnan(v) or math.isinf(v) for v in vector)"
+    },
+    {
+      "name": "determinism",
+      "description": "Same input should always produce same output",
+      "check": "encode(text) == encode(text)"
+    },
+    {
+      "name": "reversibility",
+      "description": "Decode(encode(text)) should approximate text",
+      "check": "similarity(decode(encode(text)), text) > threshold"
+    }
+  ]
+}

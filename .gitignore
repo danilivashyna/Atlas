@@ -53,3 +53,41 @@ data/cache/
 # OS
 .DS_Store
 Thumbs.db
+
+# MLOps
+wandb/
+mlruns/
+.mlflow/
+
+# API artifacts
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if web UI added)
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Coverage reports
+.coverage.*
+coverage.xml
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
