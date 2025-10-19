@@ -2,22 +2,22 @@ Copyright (c) 2025 Danil Ivashyna
 
 This software is licensed under a dual-license model:
 
-1. **Public License (AGPL v3)**  
-   You may use, modify, and distribute this software under the terms of the GNU Affero General Public License version 3 (AGPLv3) as published by the Free Software Foundation.  
+1. **Public License (AGPL v3)**
+   You may use, modify, and distribute this software under the terms of the GNU Affero General Public License version 3 (AGPLv3) as published by the Free Software Foundation.
    See <https://www.gnu.org/licenses/agpl-3.0.html> for full terms.
 
-2. **Commercial License**  
-   Commercial use of this software, including but not limited to use in proprietary, closed-source, or SaaS products **without sharing derivative source code**, requires a separate **commercial license** obtained from the copyright holder.  
-   Contact: [your-email@example.com] for details.
+2. **Commercial License**
+   Commercial use of this software, including but not limited to use in proprietary, closed-source, or SaaS products **without sharing derivative source code**, requires a separate **commercial license** obtained from the copyright holder.
+   Contact: danilivashyna@gmail.com for details.
 
 ---
 
 ### CLA (Contributor License Agreement)
-All contributors must sign the Contributor License Agreement (CLA) before submitting any contributions.  
+All contributors must sign the Contributor License Agreement (CLA) before submitting any contributions.
 By submitting a pull request, you agree to the terms of the CLA found in `CLA.md`.
 
 ### Copyright Ownership
-All contributions to this repository are automatically licensed and assigned to  
+All contributions to this repository are automatically licensed and assigned to
 **Danil Ivashyna**, who retains full rights to relicense and distribute derivative works under any terms, including proprietary licenses.
 
 ### Warranty Disclaimer
