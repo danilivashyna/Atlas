@@ -15,3 +15,4 @@ black>=24.0.0
 ruff>=0.6.0
 pre-commit>=3.0.0
 mypy>=1.0.0
+sentence-transformers>=2.2.2  # For TextEncoder5D BERT encoding
