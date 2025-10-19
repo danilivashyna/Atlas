@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 Danil Ivashyna
+
 """
 Atlas - Semantic Space Control Panel
 
@@ -23,13 +26,14 @@ __all__ = [
 # Optional imports
 try:
     from .encoder import SemanticEncoder
+
     __all__.append("SemanticEncoder")
 except ImportError:
     pass
 
 try:
     from .decoder import InterpretableDecoder
+
     __all__.append("InterpretableDecoder")
 except ImportError:
     pass
-

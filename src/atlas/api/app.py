@@ -11,6 +11,7 @@ import time
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from importlib.metadata import version as pkg_version
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +50,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Get package version
+try:
+    APP_VERSION = pkg_version("atlas")
+except Exception:
+    APP_VERSION = "0.2.0a1"
+
 # Global state
 semantic_space = None
 hierarchical_encoder = None
@@ -82,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Atlas Semantic Space API",
     description="5D semantic space interface for encoding, decoding, and explaining text",
-    version="0.1.0",
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -173,7 +180,7 @@ async def health_check():
     """Basic health check endpoint"""
     return HealthResponse(
         status="ok" if semantic_space is not None else "not_ready",
-        version="0.1.0",
+        version=APP_VERSION,
         model_loaded=semantic_space is not None,
     )
 
@@ -184,7 +191,7 @@ async def readiness_check():
     if semantic_space is None:
         raise HTTPException(status_code=503, detail="Semantic space not initialized")
 
-    return HealthResponse(status="ready", version="0.1.0", model_loaded=True)
+    return HealthResponse(status="ready", version=APP_VERSION, model_loaded=True)
 
 
 @app.get("/metrics", response_model=MetricsResponse, tags=["Health"])
