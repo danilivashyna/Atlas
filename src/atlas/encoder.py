@@ -153,11 +153,26 @@ class SimpleSemanticEncoder:
         
         This is a demonstration implementation that uses basic NLP heuristics
         to map text to semantic dimensions.
+        
+        Args:
+            text: Input text or list of texts
+            
+        Returns:
+            5D semantic vector(s)
+            
+        Raises:
+            ValueError: If text is empty or None
         """
         if isinstance(text, str):
+            if not text or not text.strip():
+                raise ValueError("Input text cannot be empty")
             texts = [text]
             single_input = True
         else:
+            if not text:
+                raise ValueError("Input text list cannot be empty")
+            if any(not t or not t.strip() for t in text):
+                raise ValueError("Input text list contains empty strings")
             texts = text
             single_input = False
         

@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  atlas-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: atlas-api:latest
+    container_name: atlas-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ATLAS_LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - atlas-network
+
+networks:
+  atlas-network:
+    driver: bridge
+
+# Optional: Add monitoring services
+# volumes:
+#   prometheus_data:
+#   grafana_data:
+
+# services:
+#   prometheus:
+#     image: prom/prometheus:latest
+#     volumes:
+#       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+#       - prometheus_data:/prometheus
+#     ports:
+#       - "9090:9090"
+#     networks:
+#       - atlas-network
+#   
+#   grafana:
+#     image: grafana/grafana:latest
+#     volumes:
+#       - grafana_data:/var/lib/grafana
+#     ports:
+#       - "3000:3000"
+#     networks:
+#       - atlas-network
