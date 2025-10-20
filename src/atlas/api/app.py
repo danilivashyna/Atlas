@@ -72,7 +72,12 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing Atlas Semantic Space...")
     try:
-        semantic_space = SemanticSpace()
+        # Check for encoder type from environment variable
+        import os
+        encoder_type = os.environ.get("ATLAS_ENCODER_TYPE", "simple")
+        logger.info(f"Using encoder type: {encoder_type}")
+        
+        semantic_space = SemanticSpace(encoder_type=encoder_type)
         hierarchical_encoder = HierarchicalEncoder()
         hierarchical_decoder = HierarchicalDecoder()
         logger.info("Atlas Semantic Space initialized successfully")

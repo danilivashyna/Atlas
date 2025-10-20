@@ -16,6 +16,13 @@ from .encoder import SimpleSemanticEncoder
 from .decoder import SimpleInterpretableDecoder
 from .dimensions import DimensionMapper, SemanticDimension
 
+# Try to import TextEncoder5D
+try:
+    from .encoders.text_encoder_5d import TextEncoder5D
+    TEXT_ENCODER_5D_AVAILABLE = True
+except ImportError:
+    TEXT_ENCODER_5D_AVAILABLE = False
+
 
 class SemanticSpace:
     """
@@ -25,9 +32,27 @@ class SemanticSpace:
     It's a visual brain reflecting the structure of thought.
     """
 
-    def __init__(self):
-        """Initialize the semantic space with encoder and decoder"""
-        self.encoder = SimpleSemanticEncoder()
+    def __init__(self, encoder_type: str = "simple"):
+        """
+        Initialize the semantic space with encoder and decoder.
+        
+        Args:
+            encoder_type: Type of encoder to use. Options:
+                - "simple": Rule-based SimpleSemanticEncoder (default)
+                - "text_encoder_5d": Neural TextEncoder5D with sentence-transformers
+        """
+        # Initialize encoder based on type
+        if encoder_type == "text_encoder_5d" and TEXT_ENCODER_5D_AVAILABLE:
+            self.encoder = TextEncoder5D()
+        else:
+            if encoder_type == "text_encoder_5d":
+                import warnings
+                warnings.warn(
+                    "TextEncoder5D not available, falling back to SimpleSemanticEncoder",
+                    RuntimeWarning
+                )
+            self.encoder = SimpleSemanticEncoder()
+        
         self.decoder = SimpleInterpretableDecoder()
         self.mapper = DimensionMapper()
         self.dimension = 5
