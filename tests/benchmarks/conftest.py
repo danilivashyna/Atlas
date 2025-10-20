@@ -22,6 +22,16 @@ skip_if_no_benchmark = pytest.mark.skipif(
 )
 
 
+# Mock benchmark fixture when pytest-benchmark is not available
+if not pytest_benchmark_available:
+    @pytest.fixture
+    def benchmark():
+        """Mock benchmark fixture for when pytest-benchmark is not installed."""
+        def run_func(func, *args, **kwargs):
+            return func(*args, **kwargs)
+        return run_func
+
+
 @pytest.fixture(scope="module")
 def encoder():
     """Create encoder instance for benchmarks."""
