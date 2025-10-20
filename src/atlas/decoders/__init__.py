@@ -94,6 +94,10 @@ class InterpretableDecoder:
 
         if not (1 <= top_k <= 10):
             raise ValueError(f"top_k must be 1-10, got {top_k}")
+        
+        # Validate vector values (no inf/nan)
+        if any(np.isnan(x) or np.isinf(x) for x in vector):
+            raise ValueError("Vector cannot contain NaN or Inf values")
 
         # Check cache
         cache_key = (tuple(vector), top_k)

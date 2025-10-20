@@ -21,6 +21,7 @@ import numpy as np
 
 from atlas import SemanticSpace
 from atlas.dimensions import DimensionMapper, SemanticDimension
+from atlas.decoders import InterpretableDecoder
 from atlas.hierarchical import (
     HierarchicalEncoder,
     HierarchicalDecoder,
@@ -59,6 +60,7 @@ except Exception:
 
 # Global state
 semantic_space = None
+interpretable_decoder = None
 hierarchical_encoder = None
 hierarchical_decoder = None
 metrics = {"requests_total": 0, "requests_by_endpoint": {}, "latencies": {}, "errors_total": 0}
@@ -67,12 +69,13 @@ metrics = {"requests_total": 0, "requests_by_endpoint": {}, "latencies": {}, "er
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup/shutdown"""
-    global semantic_space, hierarchical_encoder, hierarchical_decoder
+    global semantic_space, interpretable_decoder, hierarchical_encoder, hierarchical_decoder
 
     # Startup
     logger.info("Initializing Atlas Semantic Space...")
     try:
         semantic_space = SemanticSpace()
+        interpretable_decoder = InterpretableDecoder()
         hierarchical_encoder = HierarchicalEncoder()
         hierarchical_decoder = HierarchicalDecoder()
         logger.info("Atlas Semantic Space initialized successfully")
@@ -266,39 +269,37 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
         # Clip vector to valid range
         vector = np.clip(request.vector, -1.0, 1.0)
 
-        # Decode with reasoning
-        result = semantic_space.decode(vector, with_reasoning=True)
+        # Use InterpretableDecoder for decoding with reasoning
+        result = interpretable_decoder.decode(vector.tolist(), top_k=request.top_k)
 
-        if isinstance(result, str):
-            # Simple decode without reasoning
-            return DecodeResponse(text=result, reasoning=[], explainable=False, trace_id=trace_id)
-
-        # Parse reasoning
-        text = result.get("text", "")
-        reasoning_text = result.get("reasoning", "")
-
-        # Extract dimension contributions
+        # Convert InterpretableDecoder output to API format
         dimensions_reasoning = []
-        for i, dim in enumerate(SemanticDimension):
-            dim_value = abs(vector[i])
-            if dim_value > 0.1:  # Only include significant dimensions
-                info = DimensionMapper.get_dimension_info(dim)
-                dimensions_reasoning.append(
-                    DimensionReasoning(
-                        dim=i,
-                        weight=float(dim_value),
-                        label=info.name,
-                        evidence=[],  # TODO: Extract from reasoning text
-                    )
+        for item in result["reasoning"]:
+            dim_idx = item["dimension"]
+            # Get dimension info for label
+            dim_enum = list(SemanticDimension)[dim_idx]
+            info = DimensionMapper.get_dimension_info(dim_enum)
+            
+            dimensions_reasoning.append(
+                DimensionReasoning(
+                    dim=dim_idx,
+                    weight=abs(item["value"]),
+                    label=info.name,
+                    evidence=[item["contribution"]],  # Use contribution as evidence
                 )
-
-        # Sort by weight and take top_k
-        dimensions_reasoning.sort(key=lambda x: x.weight, reverse=True)
-        dimensions_reasoning = dimensions_reasoning[: request.top_k]
+            )
 
         return DecodeResponse(
-            text=text, reasoning=dimensions_reasoning, explainable=True, trace_id=trace_id
+            text=result["text"],
+            reasoning=dimensions_reasoning,
+            explainable=result["explainable"],
+            trace_id=trace_id,
         )
+
+    except ValueError as e:
+        # Handle validation errors (e.g., inf/nan values)
+        logger.error(f"Decode validation failed (trace_id={trace_id}): {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
         logger.error(f"Decode failed (trace_id={trace_id}): {e}")
