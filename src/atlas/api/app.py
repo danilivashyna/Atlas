@@ -43,6 +43,8 @@ from .models import (
     ErrorResponse,
     HealthResponse,
     MetricsResponse,
+    SummarizeRequest,
+    SummarizeResponse,
 )
 
 # Configure logging (no raw text logging per security policy)
@@ -50,6 +52,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Feature flags
+import os
+SUMMARY_MODE = os.getenv("ATLAS_SUMMARY_MODE", "proportional").lower()
 
 # Get package version
 try:
@@ -352,6 +358,79 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
         raise
 
 
+@app.post("/summarize", response_model=SummarizeResponse, tags=["Semantic Operations"])
+async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeResponse:
+    """
+    Length-controlled summarization with 5D semantic ratio preservation.
+
+    This endpoint performs proportional summarization that maintains the semantic
+    distribution of the source text while compressing or expanding to a target length.
+
+    **Algorithm:**
+    1. Encode source text to 5D vector and normalize to probability distribution
+    2. Collect evidence (text pieces) for each dimension with weights
+    3. Calculate token quotas per dimension: t_i = round(L' * p_i)
+    4. Greedily fill content from each dimension, avoiding repeats
+    5. Verify KL divergence D_KL(p||p') ≤ ε and adjust if needed
+
+    **Modes:**
+    - `compress`: Reduce text to target_tokens while preserving semantics
+    - `expand`: Expand text to target_tokens by elaborating on key points
+
+    **Feature Flag:**
+    Controlled by `ATLAS_SUMMARY_MODE` environment variable:
+    - `proportional` (default): Use KL-controlled proportional algorithm
+    - `off`: Endpoint returns 503 Service Unavailable
+
+    **Graceful Degradation:**
+    If evidence extraction fails, falls back to simple truncation/expansion.
+    """
+    trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+
+    # Check feature flag
+    if SUMMARY_MODE == "off":
+        raise HTTPException(
+            status_code=503,
+            detail="Summarization feature is disabled (ATLAS_SUMMARY_MODE=off)"
+        )
+
+    try:
+        logger.info(
+            f"Summarizing text (trace_id={trace_id}, length={len(request.text)}, "
+            f"target={request.target_tokens}, mode={request.mode})"
+        )
+
+        # Import summarize function
+        from atlas.summarize import summarize
+
+        # Perform summarization
+        result = summarize(
+            text=request.text,
+            target_tokens=request.target_tokens,
+            mode=request.mode,
+            epsilon=request.epsilon,
+            preserve_order=request.preserve_order,
+            encoder=semantic_space.encoder if semantic_space else None
+        )
+
+        # Build response
+        return SummarizeResponse(
+            summary=result["summary"],
+            length=result["length"],
+            ratio_target=result["ratio_target"],
+            ratio_actual=result["ratio_actual"],
+            kl_div=result["kl_div"],
+            trace_id=trace_id
+        )
+
+    except Exception as e:
+        logger.error(f"Summarize failed (trace_id={trace_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Summarization failed: {str(e)}"
+        )
+
+
 # Hierarchical API endpoints
 @app.post("/encode_h", response_model=EncodeHierarchicalResponse, tags=["Hierarchical Operations"])
 async def encode_hierarchical(
@@ -519,9 +598,10 @@ async def root():
             "encode": "POST /encode - Encode text to 5D vector",
             "decode": "POST /decode - Decode vector to text with reasoning",
             "explain": "POST /explain - Explain text's semantic representation",
-            "encode_h": "POST /encode_h - Encode text to hierarchical tree (NEW)",
-            "decode_h": "POST /decode_h - Decode tree to text with path reasoning (NEW)",
-            "manipulate_h": "POST /manipulate_h - Manipulate tree paths (NEW)",
+            "summarize": "POST /summarize - Length-controlled summarization with semantic preservation (NEW)",
+            "encode_h": "POST /encode_h - Encode text to hierarchical tree",
+            "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
+            "manipulate_h": "POST /manipulate_h - Manipulate tree paths",
             "health": "GET /health - Health check",
             "ready": "GET /ready - Readiness check",
             "metrics": "GET /metrics - Prometheus metrics",

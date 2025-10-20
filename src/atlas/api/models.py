@@ -241,3 +241,90 @@ class MetricsResponse(BaseModel):
         default_factory=dict, description="Average latency per endpoint"
     )
     errors_total: int = Field(0, description="Total number of errors")
+
+
+class SummarizeRequest(BaseModel):
+    """Request model for /summarize endpoint"""
+
+    text: str = Field(..., min_length=1, max_length=50000, description="Text to summarize")
+    target_tokens: int = Field(
+        ..., ge=10, le=5000, description="Target token count for summary"
+    )
+    mode: str = Field(
+        "compress",
+        pattern="^(compress|expand)$",
+        description="Summarization mode: 'compress' or 'expand'"
+    )
+    epsilon: float = Field(
+        0.05,
+        ge=0.0,
+        le=1.0,
+        description="KL divergence tolerance (lower = stricter preservation)"
+    )
+    preserve_order: bool = Field(
+        True,
+        description="Whether to preserve macro order of ideas from source text"
+    )
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Text cannot be empty or whitespace only")
+        return v
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "text": "Artificial intelligence is transforming industries...",
+                "target_tokens": 120,
+                "mode": "compress",
+                "epsilon": 0.05,
+                "preserve_order": True
+            }
+        }
+    )
+
+
+class SummarizeResponse(BaseModel):
+    """Response model for /summarize endpoint"""
+
+    summary: str = Field(..., description="Generated summary")
+    length: int = Field(..., description="Actual token count of summary")
+    ratio_target: List[float] = Field(
+        ...,
+        min_length=5,
+        max_length=5,
+        description="Target 5D semantic distribution"
+    )
+    ratio_actual: List[float] = Field(
+        ...,
+        min_length=5,
+        max_length=5,
+        description="Actual 5D semantic distribution achieved"
+    )
+    kl_div: float = Field(..., description="KL divergence between target and actual")
+    trace_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Request trace ID"
+    )
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z"),
+        description="ISO 8601 timestamp"
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "summary": "AI transforms industries through automation...",
+                "length": 118,
+                "ratio_target": [0.28, 0.07, 0.35, 0.10, 0.20],
+                "ratio_actual": [0.27, 0.08, 0.34, 0.11, 0.20],
+                "kl_div": 0.012,
+                "trace_id": "req_sum123abc456",
+                "timestamp": "2025-01-19T12:34:56.789Z"
+            }
+        }
+    )
