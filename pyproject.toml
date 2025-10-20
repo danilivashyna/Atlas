@@ -81,7 +81,7 @@ testpaths = [ "tests",]
 python_files = [ "test_*.py", "*_test.py",]
 python_classes = [ "Test*",]
 python_functions = [ "test_*",]
-markers = [ "slow: marks tests as slow (deselect with '-m \"not slow\"')", "integration: marks tests as integration tests", "api: marks tests that require API server", "gpu: marks tests that require GPU",]
+markers = [ "slow: marks tests as slow (deselect with '-m \"not slow\"')", "integration: marks tests as integration tests", "api: marks tests that require API server", "gpu: marks tests that require GPU", "benchmark: marks tests as benchmark tests (require pytest-benchmark)",]
 
 [tool.coverage.run]
 source = [ "src/atlas",]
