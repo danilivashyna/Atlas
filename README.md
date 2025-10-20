@@ -399,6 +399,7 @@ atlas/
 
 | Документ | Описание |
 |----------|----------|
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | **API Reference** - полная документация API (NEW!) |
 | [docs/NFR.md](docs/NFR.md) | Нефункциональные требования (производительность, безопасность) |
 | [docs/DATA_CARD.md](docs/DATA_CARD.md) | Описание данных для обучения |
 | [docs/DISENTANGLEMENT.md](docs/DISENTANGLEMENT.md) | Методология разделения семантических измерений |
