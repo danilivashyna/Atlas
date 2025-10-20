@@ -30,7 +30,7 @@ class TestHealthEndpoints:
         data = response.json()
         assert "name" in data
         assert "version" in data
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "0.2.0a1"
     
     def test_health_endpoint(self, client):
         """Test health check endpoint"""
