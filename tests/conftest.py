@@ -8,6 +8,7 @@ Pytest configuration and fixtures for Atlas tests.
 import pytest
 from atlas.api import app as app_module
 from atlas.hierarchical import HierarchicalEncoder, HierarchicalDecoder
+from atlas.decoders import InterpretableDecoder
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -16,7 +17,9 @@ def initialize_hierarchical():
     # Manually set global variables since TestClient doesn't trigger lifespan
     app_module.hierarchical_encoder = HierarchicalEncoder()
     app_module.hierarchical_decoder = HierarchicalDecoder()
+    app_module.interpretable_decoder = InterpretableDecoder()
     yield
     # Cleanup
     app_module.hierarchical_encoder = None
     app_module.hierarchical_decoder = None
+    app_module.interpretable_decoder = None
