@@ -231,3 +231,74 @@ class ManipulateHierarchicalResponse(BaseModel):
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+class NodeExplanation(BaseModel):
+    """Explanation of a node's contribution in hierarchical tree"""
+
+    path: str = Field(..., description="Path in tree (e.g., 'root', 'dim2/dim2.4')")
+    label: str = Field(..., description="Semantic label for this node")
+    value: List[float] = Field(..., min_length=5, max_length=5, description="5D vector at this node")
+    weight: Optional[float] = Field(None, ge=0.0, le=1.0, description="Router weight/confidence")
+    interpretation: Optional[str] = Field(None, description="Human-readable interpretation")
+
+
+class ExplainHierarchicalRequest(BaseModel):
+    """Request model for /explain_h endpoint"""
+
+    text: str = Field(..., min_length=1, max_length=10000, description="Text to explain")
+    max_depth: int = Field(1, ge=0, le=5, description="Maximum tree depth to expand")
+    expand_threshold: float = Field(
+        0.2, ge=0.0, le=1.0, description="Threshold for lazy expansion (router confidence)"
+    )
+    lang: Optional[str] = Field(None, pattern="^(ru|en)$", description="Language hint")
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Text cannot be empty or whitespace only")
+        return v
+
+
+class ExplainHierarchicalResponse(BaseModel):
+    """Response model for /explain_h endpoint"""
+
+    tree: TreeNode = Field(..., description="Hierarchical semantic tree")
+    nodes: List[NodeExplanation] = Field(..., description="Per-node explanations")
+    trace_id: str = Field(..., description="Request trace ID")
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "tree": {
+                    "value": [0.12, 0.88, -0.41, 0.05, 0.67],
+                    "label": "coarse",
+                    "key": "root",
+                },
+                "nodes": [
+                    {
+                        "path": "root",
+                        "label": "coarse semantic vector",
+                        "value": [0.12, 0.88, -0.41, 0.05, 0.67],
+                        "weight": 1.0,
+                        "interpretation": "High abstraction, positive sentiment",
+                    },
+                    {
+                        "path": "dim2",
+                        "label": "concrete/positive",
+                        "value": [0.2, -0.1, 0.6, -0.4, 0.3],
+                        "weight": 0.73,
+                        "interpretation": "Concrete positive entity",
+                    },
+                ],
+                "trace_id": "req_abc123",
+                "timestamp": "2025-01-19T12:34:56.789Z",
+            }
+        }
+    )

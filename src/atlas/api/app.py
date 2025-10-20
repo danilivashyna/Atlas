@@ -30,6 +30,9 @@ from atlas.hierarchical import (
     DecodeHierarchicalResponse,
     ManipulateHierarchicalRequest,
     ManipulateHierarchicalResponse,
+    ExplainHierarchicalRequest,
+    ExplainHierarchicalResponse,
+    NodeExplanation,
 )
 from .models import (
     EncodeRequest,
@@ -490,6 +493,98 @@ async def manipulate_hierarchical(
         raise
 
 
+@app.post(
+    "/explain_h", response_model=ExplainHierarchicalResponse, tags=["Hierarchical Operations"]
+)
+async def explain_hierarchical(
+    request: ExplainHierarchicalRequest, req: Request
+) -> ExplainHierarchicalResponse:
+    """
+    Explain how text is represented in hierarchical semantic space.
+
+    This endpoint encodes text into a hierarchical tree and provides detailed
+    explanations for each node's contribution, showing the multi-level semantic
+    decomposition.
+
+    **Features:**
+    - Root node shows coarse semantic representation
+    - Child nodes show fine-grained semantic details
+    - Each node includes its path, label, vector, and weight
+    - Router weights indicate expansion confidence
+
+    **Parameters:**
+    - max_depth: Controls tree depth (0 = root only, 1 = root + children, etc.)
+    - expand_threshold: Router confidence threshold for expanding children (0.0-1.0)
+
+    **Security**: Raw text is not logged, only metadata.
+    """
+    trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+
+    try:
+        logger.info(
+            f"Explaining hierarchical (trace_id={trace_id}, max_depth={request.max_depth})"
+        )
+
+        # Encode hierarchically
+        tree = hierarchical_encoder.encode_hierarchical(
+            request.text, max_depth=request.max_depth, expand_threshold=request.expand_threshold
+        )
+
+        # Generate explanations for all nodes in the tree
+        nodes_explanations = []
+
+        def explain_node(node, path="root", depth=0):
+            """Recursively explain all nodes in the tree"""
+            # Add explanation for current node
+            label = node.label or f"level-{depth}"
+            interpretation = _interpret_vector(node.value)
+
+            nodes_explanations.append(
+                NodeExplanation(
+                    path=path,
+                    label=label,
+                    value=node.value,
+                    weight=node.weight,
+                    interpretation=interpretation,
+                )
+            )
+
+            # Recursively explain children
+            if node.children:
+                for i, child in enumerate(node.children):
+                    child_path = f"{path}/dim{i}" if path == "root" else f"{path}.{i}"
+                    explain_node(child, child_path, depth + 1)
+
+        explain_node(tree)
+
+        return ExplainHierarchicalResponse(
+            tree=tree, nodes=nodes_explanations, trace_id=trace_id
+        )
+
+    except Exception as e:
+        logger.error(f"Hierarchical explain failed (trace_id={trace_id}): {e}")
+        raise
+
+
+def _interpret_vector(vector: list) -> str:
+    """Generate human-readable interpretation of a 5D vector"""
+    # Simple interpretation based on dominant dimensions
+    abs_values = [abs(v) for v in vector]
+    max_idx = abs_values.index(max(abs_values))
+    max_val = vector[max_idx]
+
+    dim_labels = [
+        "object/action",
+        "abstract/concrete",
+        "positive/negative",
+        "animate/inanimate",
+        "natural/artificial",
+    ]
+
+    polarity = "high" if max_val > 0 else "low"
+    return f"{polarity} {dim_labels[max_idx]}"
+
+
 # Favicon endpoint
 @app.get("/favicon.ico", tags=["Static"])
 async def favicon():
@@ -519,9 +614,10 @@ async def root():
             "encode": "POST /encode - Encode text to 5D vector",
             "decode": "POST /decode - Decode vector to text with reasoning",
             "explain": "POST /explain - Explain text's semantic representation",
-            "encode_h": "POST /encode_h - Encode text to hierarchical tree (NEW)",
-            "decode_h": "POST /decode_h - Decode tree to text with path reasoning (NEW)",
-            "manipulate_h": "POST /manipulate_h - Manipulate tree paths (NEW)",
+            "encode_h": "POST /encode_h - Encode text to hierarchical tree",
+            "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
+            "explain_h": "POST /explain_h - Explain hierarchical semantic representation",
+            "manipulate_h": "POST /manipulate_h - Manipulate tree paths",
             "health": "GET /health - Health check",
             "ready": "GET /ready - Readiness check",
             "metrics": "GET /metrics - Prometheus metrics",
