@@ -21,7 +21,7 @@ Atlas is a 5-dimensional semantic space encoder-decoder system designed for inte
   - Dimensionality: 5D output space
   - Input: UTF-8 text strings (any length)
   - Output: Normalized 5D vectors (values in [-1, 1])
-  
+
 - **Decoder**: Interpretable decoder with reasoning
   - Generates text from 5D vectors
   - Provides dimension-level explanations
@@ -109,16 +109,16 @@ The decoder:
 
 ### Technical Limitations
 
-1. **Performance**: 
+1. **Performance**:
    - Current: Basic Python, CPU-only
    - Target (v0.1): p50 < 50ms, p95 < 150ms
    - Current performance: Not yet benchmarked
-   
-2. **Memory**: 
+
+2. **Memory**:
    - Current: < 100MB (no neural models)
    - Target: ≤ 1GB for MVP with neural models
-   
-3. **Scalability**: 
+
+3. **Scalability**:
    - Designed for single texts/small batches
    - Not optimized for large-scale batch processing
 
@@ -156,7 +156,7 @@ For neural versions (v0.2+), we plan to use:
 ### Metrics (Planned for v0.1)
 
 #### Performance Metrics
-- **Latency**: 
+- **Latency**:
   - encode/decode/explain: p50 < 50ms, p95 < 150ms (target)
   - Current: Not benchmarked
 - **Memory**: ≤ 1GB process memory (target)

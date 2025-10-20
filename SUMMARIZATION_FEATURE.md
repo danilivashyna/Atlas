@@ -88,15 +88,15 @@ Content-Type: application/json
 
 ## Key Features
 
-✅ **Length Control**: Precise token-level control of output length  
-✅ **Semantic Preservation**: Maintains 5D distribution with KL ≤ ε  
-✅ **Dual Modes**: compress (reduce) and expand (elaborate)  
-✅ **Feature Flag**: Enable/disable via environment variable  
-✅ **Graceful Degradation**: Fallback to simple methods if needed  
-✅ **Order Preservation**: Optional macro-order maintenance  
-✅ **Anti-Repeat**: Automatic duplicate detection and removal  
-✅ **OpenAPI Documentation**: Full schema and examples  
-✅ **Comprehensive Tests**: 100% of new code covered  
+✅ **Length Control**: Precise token-level control of output length
+✅ **Semantic Preservation**: Maintains 5D distribution with KL ≤ ε
+✅ **Dual Modes**: compress (reduce) and expand (elaborate)
+✅ **Feature Flag**: Enable/disable via environment variable
+✅ **Graceful Degradation**: Fallback to simple methods if needed
+✅ **Order Preservation**: Optional macro-order maintenance
+✅ **Anti-Repeat**: Automatic duplicate detection and removal
+✅ **OpenAPI Documentation**: Full schema and examples
+✅ **Comprehensive Tests**: 100% of new code covered
 
 ## Algorithm Performance
 
@@ -134,14 +134,14 @@ Content-Type: application/json
 
 ## Acceptance Criteria Met
 
-✅ `/summarize` endpoint returns valid JSON with correct structure  
-✅ `length ≈ target_tokens` (within reasonable tolerance)  
-✅ `KL(p||p') ≤ ε` verified in tests (default ε=0.05)  
-✅ Both compress and expand modes supported  
-✅ Graceful degradation for empty evidence  
-✅ OpenAPI schema updated with examples  
-✅ All repository tests remain green  
-✅ Feature flag implementation working  
+✅ `/summarize` endpoint returns valid JSON with correct structure
+✅ `length ≈ target_tokens` (within reasonable tolerance)
+✅ `KL(p||p') ≤ ε` verified in tests (default ε=0.05)
+✅ Both compress and expand modes supported
+✅ Graceful degradation for empty evidence
+✅ OpenAPI schema updated with examples
+✅ All repository tests remain green
+✅ Feature flag implementation working
 
 ## Usage Examples
 

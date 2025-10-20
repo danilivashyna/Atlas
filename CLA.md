@@ -8,7 +8,7 @@ By submitting a contribution, you agree to the following:
    You grant the Project Owner a perpetual, worldwide, non-exclusive, transferable, royalty-free license to use, reproduce, modify, publicly display, distribute, sublicense, and relicense your contributions under any terms, including commercial licenses.
 
 2. **Copyright Assignment (Optional Clause)**
-   Optionally, the Project Owner may request that you assign copyright ownership of your contribution.  
+   Optionally, the Project Owner may request that you assign copyright ownership of your contribution.
    Upon written agreement, such assignment transfers all rights, title, and interest in the contribution to the Project Owner.
 
 3. **Representation**
@@ -22,6 +22,6 @@ By submitting a contribution, you agree to the following:
 
 ---
 
-*Effective Date:* Upon submission of your first contribution.  
-*Owner:* **Danil Ivashyna**  
+*Effective Date:* Upon submission of your first contribution.
+*Owner:* **Danil Ivashyna**
 *Contact:* [danil.ivashina@gmail.com]

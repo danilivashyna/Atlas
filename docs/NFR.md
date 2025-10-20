@@ -121,8 +121,8 @@ def decode(vector, with_reasoning=False):
         text = fallback_decoder(vector)
         if with_reasoning:
             return {
-                "text": text, 
-                "reasoning": None, 
+                "text": text,
+                "reasoning": None,
                 "explainable": False,
                 "message": "Interpretation unavailable, text-only result"
             }
@@ -472,6 +472,6 @@ Required information:
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-01-19  
+**Document Version**: 1.0
+**Last Updated**: 2025-01-19
 **Status**: Living document, updated with each release

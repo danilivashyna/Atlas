@@ -36,17 +36,17 @@ The current version uses hand-crafted rules to assign semantic properties:
 ```python
 def encode_text(self, text):
     vector = np.zeros(5)
-    
+
     # dim₁: Object ↔ Action (based on vowel ratio)
     vowel_ratio = count_vowels(text) / len(text)
     vector[0] = map_to_range(vowel_ratio, 0.3, 0.5)
-    
+
     # dim₂: Positive ↔ Negative (sentiment)
     sentiment = simple_sentiment(text)
     vector[1] = sentiment
-    
+
     # ... (other dimensions)
-    
+
     return normalize(vector)
 ```
 
@@ -78,7 +78,7 @@ Output: 5D semantic vector (normalized)
 The total loss combines multiple objectives:
 
 ```
-L_total = L_reconstruction + λ₁·L_orthogonality + λ₂·L_sparsity 
+L_total = L_reconstruction + λ₁·L_orthogonality + λ₂·L_sparsity
           + λ₃·L_tc + λ₄·L_info
 ```
 
@@ -101,7 +101,7 @@ Where:
 def orthogonality_loss(W):
     """
     Penalize ||W^T W - I||_F^2
-    
+
     W: weight matrix (5 × 768)
     Returns: scalar loss
     """
@@ -125,7 +125,7 @@ def orthogonality_loss(W):
 def sparsity_loss(z):
     """
     L1 penalty: Σᵢ |zᵢ|
-    
+
     z: latent code (batch_size × 5)
     Returns: scalar loss
     """
@@ -146,18 +146,18 @@ def sparsity_loss(z):
 def total_correlation_loss(z):
     """
     TC(z) = KL(p(z) || ∏ᵢ p(zᵢ))
-    
+
     Approximated using minibatch-weighted sampling
     """
     # Estimate p(z) from batch
     log_qz = estimate_log_density(z)  # Joint distribution
-    
+
     # Estimate ∏ᵢ p(zᵢ) (product of marginals)
     log_qz_product = sum(
-        estimate_log_marginal(z[:, i]) 
+        estimate_log_marginal(z[:, i])
         for i in range(5)
     )
-    
+
     tc = log_qz - log_qz_product
     return torch.mean(tc)
 ```
@@ -178,7 +178,7 @@ def total_correlation_loss(z):
 def info_max_loss(z, semantic_labels):
     """
     Maximize I(zᵢ; sᵢ) where sᵢ is semantic property i
-    
+
     z: latent code (batch_size × 5)
     semantic_labels: ground truth properties (batch_size × 5)
     """
@@ -187,10 +187,10 @@ def info_max_loss(z, semantic_labels):
         # Contrastive loss for dimension i
         positive = z[:, dim]  # Current dimension
         target = semantic_labels[:, dim]  # Target property
-        
+
         # InfoNCE: positive pairs vs negative pairs
         loss += contrastive_loss(positive, target)
-    
+
     return loss
 ```
 
@@ -213,22 +213,22 @@ def counterfactual_loss(encoder, decoder, x, dim_to_vary):
     """
     z_original = encoder(x)
     loss = 0
-    
+
     # Sample different values for dimension i
     for new_value in [-1.0, -0.5, 0.0, 0.5, 1.0]:
         z_modified = z_original.clone()
         z_modified[:, dim_to_vary] = new_value
-        
+
         # Decode both
         x_original_decoded = decoder(z_original)
         x_modified_decoded = decoder(z_modified)
-        
+
         # Measure difference (should be localized to semantic property i)
         diff = semantic_difference(x_original_decoded, x_modified_decoded)
-        
+
         # Penalize if difference affects wrong properties
         loss += wrong_properties_changed(diff, dim_to_vary)
-    
+
     return loss
 ```
 
@@ -266,19 +266,19 @@ for epoch in range(main_epochs):
     # Anneal regularization weights
     λ_ortho = min(0.1, epoch * 0.01)
     λ_tc = min(1.0, epoch * 0.1)
-    
+
     for batch in dataloader:
         z = encoder(batch.text)
         reconstruction = decoder(z)
-        
+
         # Combined loss
         L_recon = reconstruction_loss(reconstruction, batch.text)
         L_ortho = orthogonality_loss(encoder.projection_weights)
         L_sparse = sparsity_loss(z)
         L_tc_val = total_correlation_loss(z)
-        
+
         loss = L_recon + λ_ortho*L_ortho + λ_sparse*L_sparse + λ_tc*L_tc_val
-        
+
         loss.backward()
         optimizer.step()
 ```
@@ -295,13 +295,13 @@ If labeled data available:
 for epoch in range(finetune_epochs):
     for batch in labeled_dataloader:
         z = encoder(batch.text)
-        
+
         # Supervised loss on semantic properties
         L_info = info_max_loss(z, batch.semantic_labels)
         L_counterfactual = counterfactual_loss(encoder, decoder, batch.text, dim_to_vary=random.choice([0,1,2,3,4]))
-        
+
         loss = L_recon + L_ortho + L_tc + L_info + L_counterfactual
-        
+
         loss.backward()
         optimizer.step()
 ```
@@ -346,11 +346,11 @@ def compute_sap(z, attributes):
             # Train linear classifier: z[:, dim] → attr
             score = train_and_evaluate(z[:, dim], attr)
             dim_scores.append(score)
-        
+
         # Difference between best and second-best
         dim_scores.sort(reverse=True)
         scores.append(dim_scores[0] - dim_scores[1])
-    
+
     return np.mean(scores)
 ```
 
@@ -367,7 +367,7 @@ def compute_mig(z, factors):
     """
     # Compute I(zᵢ; fⱼ) for all pairs
     mi_matrix = mutual_information_matrix(z, factors)
-    
+
     # For each factor, find top 2 dimensions
     gaps = []
     for j in range(factors.shape[1]):
@@ -375,7 +375,7 @@ def compute_mig(z, factors):
         mi_scores.sort()
         gap = mi_scores[-1] - mi_scores[-2]
         gaps.append(gap / entropy(factors[:, j]))
-    
+
     return np.mean(gaps)
 ```
 
@@ -394,16 +394,16 @@ def compute_dci(z, factors):
     """
     # Train ensemble of classifiers
     importance_matrix = train_gradient_boosting(z, factors)
-    
+
     # Disentanglement
     D = 1 - entropy_of_importance(importance_matrix, axis=1).mean()
-    
+
     # Completeness
     C = 1 - entropy_of_importance(importance_matrix, axis=0).mean()
-    
+
     # Informativeness
     I = prediction_accuracy(z, factors)
-    
+
     return D, C, I
 ```
 
@@ -419,11 +419,11 @@ Manually vary each dimension and observe changes:
 def dimension_intervention_demo(text, dim, values):
     """Show how varying dimension affects output"""
     z_base = encoder(text)
-    
+
     print(f"Original: {text}")
     print(f"Base vector: {z_base}")
     print()
-    
+
     for val in values:
         z_mod = z_base.clone()
         z_mod[dim] = val
@@ -452,7 +452,7 @@ def dimension_clustering(texts):
     """Cluster texts by strongest dimension"""
     vectors = encoder(texts)
     strongest_dim = np.argmax(np.abs(vectors), axis=1)
-    
+
     for dim in range(5):
         examples = [t for t, d in zip(texts, strongest_dim) if d == dim]
         print(f"Dimension {dim}: {examples[:10]}")
@@ -513,12 +513,12 @@ For each dimension:
        """Check that similar dimension values = similar meanings"""
        texts = load_test_corpus()
        vectors = encoder(texts)
-       
+
        # Find texts with similar dim value
        for anchor_text, anchor_vec in zip(texts, vectors):
-           similar = [t for t, v in zip(texts, vectors) 
+           similar = [t for t, v in zip(texts, vectors)
                      if abs(v[dim] - anchor_vec[dim]) < threshold]
-           
+
            # Check semantic similarity (manual or automated)
            coherence_score = measure_coherence(anchor_text, similar)
            assert coherence_score > 0.7, f"Low coherence for dim {dim}"
@@ -565,6 +565,6 @@ For questions about disentanglement methodology:
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-01-19  
+**Document Version**: 1.0
+**Last Updated**: 2025-01-19
 **Status**: Planning document for v0.2+ neural implementations

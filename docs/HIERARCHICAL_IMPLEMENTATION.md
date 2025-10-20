@@ -140,11 +140,11 @@ modified = decoder.manipulate_path(
 1. **POST /encode_h** - Encode text to tree
    - Input: text, max_depth, expand_threshold
    - Output: hierarchical tree
-   
+
 2. **POST /decode_h** - Decode tree to text
    - Input: tree, top_k
    - Output: text + path reasoning
-   
+
 3. **POST /manipulate_h** - Manipulate tree paths
    - Input: text, edits (list of path modifications)
    - Output: original & modified results
@@ -213,7 +213,7 @@ python scripts/benchmark_hierarchical.py \
 **TreeNode Tests** (6):
 - ✅ Creation and basic validation
 - ✅ NaN rejection
-- ✅ Inf rejection  
+- ✅ Inf rejection
 - ✅ Range validation
 - ✅ Children count validation
 - ✅ Nested structures

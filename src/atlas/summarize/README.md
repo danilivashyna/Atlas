@@ -10,7 +10,7 @@ This module implements a novel summarization algorithm that maintains the semant
 
 - **Length Control**: Precisely control output length via `target_tokens` parameter
 - **Semantic Preservation**: Maintains 5D semantic distribution with KL-divergence ≤ ε
-- **Dual Modes**: 
+- **Dual Modes**:
   - `compress`: Reduce text while preserving meaning
   - `expand`: Elaborate on content to reach target length
 - **Graceful Degradation**: Falls back to simple methods if evidence extraction fails

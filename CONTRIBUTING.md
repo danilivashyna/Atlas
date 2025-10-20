@@ -262,20 +262,20 @@ We use Google-style docstrings:
 def encode_text(self, text: Union[str, List[str]]) -> np.ndarray:
     """
     Encode text into 5D semantic space.
-    
+
     This method compresses text into a 5-dimensional vector where each
     dimension represents a distinct semantic property.
-    
+
     Args:
         text: Input text or list of texts to encode
-        
+
     Returns:
         5D semantic vector(s). If input is a string, returns (5,) array.
         If input is a list, returns (n, 5) array.
-        
+
     Raises:
         ValueError: If text is empty or None
-        
+
     Examples:
         >>> encoder = SimpleSemanticEncoder()
         >>> vector = encoder.encode_text("Собака")

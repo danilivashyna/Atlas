@@ -2,8 +2,8 @@
 
 This Commercial License Agreement ("Agreement") is made between:
 
-**Licensor:** Danil Ivashyna  
-**Licensee:** [Company Name]  
+**Licensor:** Danil Ivashyna
+**Licensee:** [Company Name]
 **Effective Date:** [Date]
 
 ## 1. Grant of License
@@ -34,6 +34,6 @@ This Agreement is governed by the laws of [your jurisdiction, e.g., Ukraine or E
 
 **Signed by:**
 
-**Licensor:** ______________________  
-**Licensee:** ______________________  
+**Licensor:** ______________________
+**Licensee:** ______________________
 **Date:** ______________________

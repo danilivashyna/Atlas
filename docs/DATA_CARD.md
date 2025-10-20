@@ -149,7 +149,7 @@ For future neural network versions, we plan to use the following data sources:
 ### Profanity Filtering
 
 - **Method**: Blocklist-based filtering
-- **Blocklists**: 
+- **Blocklists**:
   - Russian: Community-curated list
   - English: Standard profanity lists
 - **Action**: Remove sentences containing blocked words
@@ -163,7 +163,7 @@ For future neural network versions, we plan to use the following data sources:
 - URLs with personal info
 - Named entity recognition (person names)
 
-**Action**: 
+**Action**:
 - Remove sentences with high PII probability
 - Redact specific PII instances in some cases
 
@@ -398,6 +398,6 @@ For questions about data:
 
 ---
 
-**Data Card Version**: 1.0  
-**Last Updated**: 2025-01-19  
+**Data Card Version**: 1.0
+**Last Updated**: 2025-01-19
 **Applies to**: Atlas v0.1.0 (rule-based), planning for v0.2.0 (neural)

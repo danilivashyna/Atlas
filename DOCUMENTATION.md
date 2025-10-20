@@ -208,7 +208,7 @@ print(info.name, info.poles, info.description)
 
 # Interpret value
 interpretation = DimensionMapper.interpret_value(
-    SemanticDimension.DIM2, 
+    SemanticDimension.DIM2,
     0.8
 )
 print(interpretation)  # "strongly negative"

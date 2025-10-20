@@ -486,7 +486,7 @@ for alpha in [0.0, 0.25, 0.5, 0.75, 1.0]:
         for v1, v2 in zip(tree1.value, tree2.value)
     ]
     interpolated_tree.value = mixed_value
-    
+
     result = decoder.decode_hierarchical(interpolated_tree)
     print(f"α={alpha:.2f}: {result['text']}")
 ```

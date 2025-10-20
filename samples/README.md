@@ -28,7 +28,7 @@ space = SemanticSpace()
 sample = data['samples'][0]
 vector = space.encode(sample['text'])
 assert len(vector) == 5
-assert all(abs(v - e) < sample['tolerance'] 
+assert all(abs(v - e) < sample['tolerance']
            for v, e in zip(vector, sample['expected_vector']))
 ```
 

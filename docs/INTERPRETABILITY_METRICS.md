@@ -22,17 +22,17 @@ Interpretability is not just about model accuracy—it's about whether humans ca
 def dim_coherence_at_k(dimension: int, k: int = 20) -> float:
     """
     Compute coherence for top-k words in a dimension.
-    
+
     Args:
         dimension: Which dimension to evaluate (0-4)
         k: Number of top words to consider
-        
+
     Returns:
         Coherence score (higher is better, range roughly [-1, 1])
     """
     # 1. Find top-k words for this dimension
     top_words = get_top_k_words_for_dimension(dimension, k)
-    
+
     # 2. Compute NPMI for all word pairs
     npmi_scores = []
     for i, w1 in enumerate(top_words):
@@ -40,7 +40,7 @@ def dim_coherence_at_k(dimension: int, k: int = 20) -> float:
             if i < j:  # Avoid duplicates
                 npmi = compute_npmi(w1, w2)
                 npmi_scores.append(npmi)
-    
+
     # 3. Average NPMI
     coherence = np.mean(npmi_scores)
     return coherence
@@ -50,35 +50,35 @@ def get_top_k_words_for_dimension(dimension: int, k: int) -> List[str]:
     # Encode all words in vocabulary
     words = load_vocabulary()
     vectors = encoder(words)
-    
+
     # Sort by absolute value in this dimension
     dim_values = np.abs(vectors[:, dimension])
     top_indices = np.argsort(dim_values)[-k:]
-    
+
     return [words[i] for i in top_indices]
 
 def compute_npmi(word1: str, word2: str, corpus=None) -> float:
     """
     Compute Normalized PMI between two words.
-    
+
     NPMI = PMI(w1, w2) / -log(p(w1, w2))
-    
+
     Requires a reference corpus to compute co-occurrence.
     """
     if corpus is None:
         corpus = load_reference_corpus()
-    
+
     # Count occurrences
     p_w1 = count_word(word1, corpus) / len(corpus)
     p_w2 = count_word(word2, corpus) / len(corpus)
     p_w1_w2 = count_cooccurrence(word1, word2, corpus, window=10) / len(corpus)
-    
+
     # PMI
     pmi = np.log(p_w1_w2 / (p_w1 * p_w2)) if p_w1_w2 > 0 else -np.inf
-    
+
     # Normalize
     npmi = pmi / -np.log(p_w1_w2) if p_w1_w2 > 0 else 0
-    
+
     return npmi
 ```
 
@@ -109,46 +109,46 @@ def compute_npmi(word1: str, word2: str, corpus=None) -> float:
 def counterfactual_consistency(dimension: int, test_texts: List[str]) -> float:
     """
     Measure consistency of dimension effects.
-    
+
     Args:
         dimension: Which dimension to test
         test_texts: Sample texts to use
-        
+
     Returns:
         Consistency score in [0, 1] (higher is better)
     """
     consistency_scores = []
-    
+
     for text in test_texts:
         # Original encoding
         z_orig = encoder(text)
         orig_decoded = decoder(z_orig)
-        
+
         # Vary dimension
         consistency_score = 0
         for delta in [-0.5, -0.25, 0.25, 0.5]:
             z_mod = z_orig.copy()
             z_mod[dimension] += delta
             z_mod = np.clip(z_mod, -1, 1)  # Keep in bounds
-            
+
             mod_decoded = decoder(z_mod)
-            
+
             # Check if change matches expected semantic shift
             expected_shift = get_expected_shift(dimension, delta)
             actual_shift = measure_semantic_shift(orig_decoded, mod_decoded)
-            
+
             # Similarity between expected and actual
             similarity = cosine_similarity(expected_shift, actual_shift)
             consistency_score += similarity
-        
+
         consistency_scores.append(consistency_score / 4)  # Average over deltas
-    
+
     return np.mean(consistency_scores)
 
 def get_expected_shift(dimension: int, delta: float) -> Dict[str, float]:
     """
     Define expected semantic changes for each dimension.
-    
+
     Returns dict of semantic properties and expected change magnitudes.
     """
     # Example for dimension 1 (Positive ↔ Negative)
@@ -160,11 +160,11 @@ def get_expected_shift(dimension: int, delta: float) -> Dict[str, float]:
             "concreteness": 0
         }
     # Define for other dimensions...
-    
+
 def measure_semantic_shift(text1: str, text2: str) -> Dict[str, float]:
     """
     Measure actual semantic differences between two texts.
-    
+
     Returns dict of semantic property changes.
     """
     return {
@@ -202,42 +202,42 @@ def measure_semantic_shift(text1: str, text2: str) -> Dict[str, float]:
 def measure_stability(texts: List[str], n_runs: int = 5) -> Tuple[float, float]:
     """
     Measure stability using ARI and NMI across multiple runs.
-    
+
     Args:
         texts: Test texts to cluster
         n_runs: Number of independent runs
-        
+
     Returns:
         (mean_ari, mean_nmi) across all run pairs
     """
     from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
     from sklearn.cluster import KMeans
-    
+
     # Encode texts with multiple model initializations
     all_clusterings = []
     for run in range(n_runs):
         # Re-initialize and train model (or load different checkpoint)
         model = train_model_from_scratch(seed=run)
-        
+
         # Encode and cluster
         vectors = model.encoder(texts)
         kmeans = KMeans(n_clusters=5, random_state=42)
         clusters = kmeans.fit_predict(vectors)
-        
+
         all_clusterings.append(clusters)
-    
+
     # Compare all pairs of runs
     ari_scores = []
     nmi_scores = []
-    
+
     for i in range(n_runs):
         for j in range(i + 1, n_runs):
             ari = adjusted_rand_score(all_clusterings[i], all_clusterings[j])
             nmi = normalized_mutual_info_score(all_clusterings[i], all_clusterings[j])
-            
+
             ari_scores.append(ari)
             nmi_scores.append(nmi)
-    
+
     return np.mean(ari_scores), np.mean(nmi_scores)
 ```
 
@@ -268,25 +268,25 @@ def measure_stability(texts: List[str], n_runs: int = 5) -> Tuple[float, float]:
 def dimension_purity(dimension: int, semantic_labels: np.ndarray) -> float:
     """
     Measure how purely a dimension captures one semantic factor.
-    
+
     Args:
         dimension: Which dimension to evaluate
         semantic_labels: Ground truth labels for semantic factors (N × k)
-        
+
     Returns:
         Purity score in [0, 1] (higher means more pure)
     """
     # Get vectors for all test examples
     vectors = encoder(test_texts)
     dim_values = vectors[:, dimension]
-    
+
     # For each semantic factor, compute correlation
     correlations = []
     for factor_idx in range(semantic_labels.shape[1]):
         factor_values = semantic_labels[:, factor_idx]
         corr = np.corrcoef(dim_values, factor_values)[0, 1]
         correlations.append(abs(corr))
-    
+
     # Purity = max correlation / sum of correlations
     # (ratio of dominant factor to all factors)
     purity = max(correlations) / sum(correlations)
@@ -356,16 +356,16 @@ Consider:
 Text: "Собака бежит по парку"
 Vector: [-0.5, 0.2, 0.4, 0.1, 0.6]
 
-Dimension 0 (Object ↔ Action): 
+Dimension 0 (Object ↔ Action):
   Value: -0.5 (Action-oriented)
   How well does this capture grammatical structure?
   [ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]
-  
+
 Dimension 1 (Positive ↔ Negative):
   Value: 0.2 (Slightly positive)
   How well does this capture emotional tone?
   [ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]
-  
+
 [Continue for all dimensions...]
 ```
 
@@ -377,10 +377,10 @@ Measure consistency between annotators using **Krippendorff's α**:
 def krippendorffs_alpha(ratings: np.ndarray) -> float:
     """
     Compute Krippendorff's α for inter-annotator agreement.
-    
+
     Args:
         ratings: (n_annotators × n_items) matrix of ratings
-        
+
     Returns:
         α ∈ [-1, 1], where 1 = perfect agreement, 0 = random
     """
@@ -411,18 +411,18 @@ def krippendorffs_alpha(ratings: np.ndarray) -> float:
 def analyze_human_eval(ratings: np.ndarray) -> pd.DataFrame:
     """
     Analyze human evaluation results.
-    
+
     Args:
         ratings: (n_examples × n_annotators × n_dimensions) array
-        
+
     Returns:
         DataFrame with summary statistics per dimension
     """
     results = []
-    
+
     for dim in range(5):
         dim_ratings = ratings[:, :, dim].flatten()
-        
+
         results.append({
             'dimension': dim,
             'mean_rating': np.mean(dim_ratings),
@@ -431,7 +431,7 @@ def analyze_human_eval(ratings: np.ndarray) -> pd.DataFrame:
             'pct_agree': np.mean(dim_ratings >= 4),  # % rated 4 or 5
             'pct_disagree': np.mean(dim_ratings <= 2)  # % rated 1 or 2
         })
-    
+
     return pd.DataFrame(results)
 ```
 
@@ -468,7 +468,7 @@ def compute_interpretability_score(
 ) -> float:
     """
     Compute composite interpretability score.
-    
+
     Weights:
     - 30% Dim-Coherence (average across dimensions)
     - 25% Counterfactual Consistency
@@ -480,7 +480,7 @@ def compute_interpretability_score(
     consistency_norm = np.mean(consistency_scores)
     stability_norm = stability_ari
     human_norm = np.mean(human_eval_means) / 5  # Likert 1-5 to [0,1]
-    
+
     # Weighted average
     score = (
         0.30 * coherence_norm +
@@ -488,7 +488,7 @@ def compute_interpretability_score(
         0.20 * stability_norm +
         0.25 * human_norm
     )
-    
+
     return score
 ```
 
@@ -514,7 +514,7 @@ def log_interpretability_metrics(
 ):
     """Log metrics to tracking system (wandb/mlflow)"""
     import wandb  # or mlflow
-    
+
     wandb.log({
         'version': version,
         'timestamp': datetime.now(),
@@ -534,11 +534,11 @@ def check_interpretability_regression(
 ) -> List[str]:
     """
     Check for significant drops in interpretability.
-    
+
     Returns list of degraded metrics.
     """
     regressions = []
-    
+
     for metric_name, current_value in current_metrics.items():
         baseline_value = baseline_metrics.get(metric_name)
         if baseline_value is not None:
@@ -546,7 +546,7 @@ def check_interpretability_regression(
                 regressions.append(
                     f"{metric_name}: {baseline_value:.3f} → {current_value:.3f}"
                 )
-    
+
     return regressions
 ```
 
@@ -612,7 +612,7 @@ Evaluation Dataset: [dataset name, size]
 - Dimension 2 (Abstraction) shows lower coherence and human ratings
   → Increase regularization weight for this dimension
   → Add more abstract/concrete pairs to training data
-  
+
 - All other dimensions meet or exceed targets
 - Model ready for v0.X release
 ```
@@ -644,5 +644,5 @@ python scripts/human_eval_interface.py \
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 1.0
 **Last Updated**: 2025-01-19
