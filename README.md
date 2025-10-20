@@ -380,6 +380,18 @@ atlas/
 
 ## 📚 Документация
 
+### 🚀 v0.2 Development (Текущий спринт)
+
+| Документ | Описание |
+|----------|----------|
+| [docs/v0.2_QUICK_SPECS.md](docs/v0.2_QUICK_SPECS.md) | **СТАРТ ЗДЕСЬ**: Краткая шпаргалка (print it!) |
+| [docs/v0.2_IMPLEMENTATION_SPECS.md](docs/v0.2_IMPLEMENTATION_SPECS.md) | Полные спецификации для PRs #7-12 |
+| [docs/v0.2_TASK_BRIEFS.md](docs/v0.2_TASK_BRIEFS.md) | 8 task briefs для всех веток (copy-paste) |
+| [docs/v0.2_ASSIGNMENT_KICKOFF.md](docs/v0.2_ASSIGNMENT_KICKOFF.md) | Developer quick start (5-min read) |
+| [docs/v0.2_DELIVERY_SUMMARY.md](docs/v0.2_DELIVERY_SUMMARY.md) | Executive summary + timelines |
+| [docs/v0.2_TEAM_DEPLOYMENT.md](docs/v0.2_TEAM_DEPLOYMENT.md) | Manager guide for coordination |
+| [docs/v0.2_PR_BODY_TEMPLATES.md](docs/v0.2_PR_BODY_TEMPLATES.md) | PR descriptions (ready to copy) |
+
 ### Основная документация
 
 | Документ | Описание |
