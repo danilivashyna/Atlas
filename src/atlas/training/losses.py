@@ -18,9 +18,7 @@ import torch
 import torch.nn.functional as F
 
 
-def orthogonality_loss(
-    axes: torch.Tensor, reduction: str = "mean"
-) -> torch.Tensor:
+def orthogonality_loss(axes: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     """
     Orthogonality loss to encourage independent semantic dimensions.
 
@@ -54,20 +52,20 @@ def orthogonality_loss(
     if axes.dim() == 2:
         # Single matrix: (D, D)
         axes = axes.unsqueeze(0)  # (1, D, D)
-    
+
     # Compute Gram matrix: G = axes @ axes^T
     # Shape: (B, D, D)
     gram = torch.bmm(axes, axes.transpose(-2, -1))
-    
+
     # Extract off-diagonal elements
     # Create mask for off-diagonal elements
     batch_size, dim, _ = gram.shape
     mask = ~torch.eye(dim, dtype=torch.bool, device=gram.device)
     mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
-    
+
     # Sum absolute values of off-diagonal elements
     off_diagonal = torch.abs(gram[mask])
-    
+
     if reduction == "mean":
         # Average over all off-diagonal elements
         return torch.mean(off_diagonal)
@@ -81,9 +79,7 @@ def orthogonality_loss(
         raise ValueError(f"reduction must be 'mean', 'sum', or 'none', got {reduction}")
 
 
-def l1_sparsity_loss(
-    vectors: torch.Tensor, reduction: str = "mean"
-) -> torch.Tensor:
+def l1_sparsity_loss(vectors: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     """
     L1 sparsity loss to encourage sparse representations.
 
@@ -122,10 +118,10 @@ def l1_sparsity_loss(
         if reduction == "none":
             return l1_norm.unsqueeze(0)
         return l1_norm
-    
+
     # Batch of vectors
     l1_norm = torch.abs(vectors).sum(dim=tuple(range(1, vectors.dim())))
-    
+
     if reduction == "mean":
         return torch.mean(l1_norm)
     elif reduction == "sum":
@@ -137,9 +133,7 @@ def l1_sparsity_loss(
 
 
 def router_entropy_loss(
-    router_probs: torch.Tensor, 
-    reduction: str = "mean",
-    min_entropy: bool = False
+    router_probs: torch.Tensor, reduction: str = "mean", min_entropy: bool = False
 ) -> torch.Tensor:
     """
     Router entropy loss for balancing routing decisions in hierarchical models.
@@ -150,7 +144,7 @@ def router_entropy_loss(
 
     Formula (maximize entropy):
         loss = -sum(p_i * log(p_i))  # Negative entropy (minimize negative = maximize)
-        
+
     Formula (minimize entropy):
         loss = -sum(p_i * log(p_i))  # Entropy itself
 
@@ -184,15 +178,15 @@ def router_entropy_loss(
     # Ensure probabilities are in valid range
     eps = 1e-10
     router_probs = torch.clamp(router_probs, min=eps, max=1.0)
-    
+
     # Compute entropy: -sum(p * log(p))
     log_probs = torch.log(router_probs)
     entropy = -torch.sum(router_probs * log_probs, dim=-1)
-    
+
     # If maximizing entropy, we minimize negative entropy
     if not min_entropy:
         entropy = -entropy
-    
+
     if reduction == "mean":
         return torch.mean(entropy)
     elif reduction == "sum":

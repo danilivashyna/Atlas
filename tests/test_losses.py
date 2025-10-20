@@ -54,7 +54,9 @@ class TestOrthogonalityLoss:
         """Test no reduction (per-batch)"""
         batch_axes = torch.randn(3, 5, 5)
         loss = orthogonality_loss(batch_axes, reduction="none")
-        assert loss.shape == torch.Size([3]), "No reduction should return per-batch loss"
+        assert loss.shape == torch.Size(
+            [3]
+        ), "No reduction should return per-batch loss"
 
     def test_invalid_reduction(self):
         """Test invalid reduction raises error"""
@@ -126,7 +128,9 @@ class TestL1SparsityLoss:
         """Test no reduction (per-sample)"""
         vectors = torch.randn(32, 5)
         loss = l1_sparsity_loss(vectors, reduction="none")
-        assert loss.shape == torch.Size([32]), "No reduction should return per-sample loss"
+        assert loss.shape == torch.Size(
+            [32]
+        ), "No reduction should return per-sample loss"
 
     def test_invalid_reduction(self):
         """Test invalid reduction raises error"""
@@ -166,7 +170,9 @@ class TestRouterEntropyLoss:
         loss = router_entropy_loss(router_probs, min_entropy=False)
         # Maximum entropy for 5 branches: log(5) ≈ 1.609
         # We minimize negative entropy, so loss should be negative
-        assert loss < 0, "Uniform distribution should have negative loss (maximizing entropy)"
+        assert (
+            loss < 0
+        ), "Uniform distribution should have negative loss (maximizing entropy)"
 
     def test_peaked_distribution_low_entropy(self):
         """Test that peaked distribution has low entropy"""
@@ -183,7 +189,9 @@ class TestRouterEntropyLoss:
         router_probs = torch.ones(32, 5) / 5.0
         loss = router_entropy_loss(router_probs, min_entropy=True)
         # Maximum entropy is positive in min_entropy mode
-        assert loss > 0, "Uniform distribution should have positive entropy in min_entropy mode"
+        assert (
+            loss > 0
+        ), "Uniform distribution should have positive entropy in min_entropy mode"
 
     def test_max_entropy_mode(self):
         """Test maximize entropy mode (default)"""
@@ -209,7 +217,9 @@ class TestRouterEntropyLoss:
         """Test no reduction (per-sample)"""
         router_probs = torch.softmax(torch.randn(32, 5), dim=-1)
         loss = router_entropy_loss(router_probs, reduction="none")
-        assert loss.shape == torch.Size([32]), "No reduction should return per-sample loss"
+        assert loss.shape == torch.Size(
+            [32]
+        ), "No reduction should return per-sample loss"
 
     def test_invalid_reduction(self):
         """Test invalid reduction raises error"""
@@ -229,7 +239,9 @@ class TestRouterEntropyLoss:
         """Test with probabilities that sum to 1"""
         router_probs = torch.softmax(torch.randn(32, 5), dim=-1)
         # Verify probabilities sum to 1
-        assert torch.allclose(router_probs.sum(dim=-1), torch.ones(32)), "Probs should sum to 1"
+        assert torch.allclose(
+            router_probs.sum(dim=-1), torch.ones(32)
+        ), "Probs should sum to 1"
         loss = router_entropy_loss(router_probs)
         assert not torch.isnan(loss), "Loss should not be NaN for valid probabilities"
         assert not torch.isinf(loss), "Loss should not be Inf for valid probabilities"
@@ -250,7 +262,9 @@ class TestRouterEntropyLoss:
         # Entropy should be between 0 (peaked) and log(K) (uniform)
         max_entropy = math.log(K)
         assert torch.all(loss >= 0), "Entropy should be non-negative"
-        assert torch.all(loss <= max_entropy + 0.1), f"Entropy should not exceed log({K})"
+        assert torch.all(
+            loss <= max_entropy + 0.1
+        ), f"Entropy should not exceed log({K})"
 
 
 class TestLossIntegration:
