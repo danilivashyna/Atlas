@@ -7,5 +7,11 @@
 """Training subpackage for Atlas v0.2+"""
 
 from .distill import distill_loss
+from .losses import orthogonality_loss, l1_sparsity_loss, router_entropy_loss
 
-__all__ = ["distill_loss"]
+__all__ = [
+    "distill_loss",
+    "orthogonality_loss",
+    "l1_sparsity_loss",
+    "router_entropy_loss",
+]
