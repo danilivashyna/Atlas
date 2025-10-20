@@ -6,6 +6,26 @@
 
 """Metrics subpackage for Atlas v0.2+"""
 
-from .metrics_hier import h_coherence_stub, h_stability_stub
+from .hier_metrics import (
+    h_coherence,
+    h_stability,
+    h_diversity,
+    h_coherence_stub,
+    h_stability_stub,
+    interpretability_metrics_summary,
+    CoherenceResult,
+    StabilityResult,
+    DiversityResult,
+)
 
-__all__ = ["h_coherence_stub", "h_stability_stub"]
+__all__ = [
+    "h_coherence",
+    "h_stability",
+    "h_diversity",
+    "h_coherence_stub",
+    "h_stability_stub",
+    "interpretability_metrics_summary",
+    "CoherenceResult",
+    "StabilityResult",
+    "DiversityResult",
+]
