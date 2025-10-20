@@ -95,6 +95,12 @@ def cmd_transform(args):
         print(f"\nReconstructed: \"{result['decoded']}\"")
 
 
+def cmd_explain(args):
+    """Explain text semantic dimensions (alias for transform with reasoning)"""
+    args.reasoning = True
+    cmd_transform(args)
+
+
 def cmd_manipulate(args):
     """Manipulate a specific dimension"""
     space = SemanticSpace()
@@ -334,6 +340,10 @@ Examples:
     parser_transform.add_argument("text", help="Text to transform")
     parser_transform.add_argument("--reasoning", action="store_true", help="Show reasoning")
 
+    # Explain command (alias for transform with reasoning)
+    parser_explain = subparsers.add_parser("explain", help="Explain text semantic dimensions")
+    parser_explain.add_argument("text", help="Text to explain")
+
     # Manipulate command
     parser_manipulate = subparsers.add_parser("manipulate", help="Manipulate a dimension")
     parser_manipulate.add_argument("text", help="Input text")
@@ -421,6 +431,7 @@ Examples:
         "encode": cmd_encode,
         "decode": cmd_decode,
         "transform": cmd_transform,
+        "explain": cmd_explain,
         "manipulate": cmd_manipulate,
         "interpolate": cmd_interpolate,
         "explore": cmd_explore,
