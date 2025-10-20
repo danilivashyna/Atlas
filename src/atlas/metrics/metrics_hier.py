@@ -15,8 +15,8 @@ TODO (v0.2.1+):
 - Add stability tests across multiple runs
 """
 
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

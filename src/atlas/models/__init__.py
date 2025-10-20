@@ -6,6 +6,6 @@
 
 """Models subpackage for Atlas v0.2+"""
 
-from .encoder_bert import TextEncoder5D, BertEncoderConfig
+from .encoder_bert import BertEncoderConfig, TextEncoder5D
 
 __all__ = ["TextEncoder5D", "BertEncoderConfig"]

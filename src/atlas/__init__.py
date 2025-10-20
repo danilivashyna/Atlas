@@ -10,9 +10,9 @@ Atlas doesn't just visualize vectors - it shows how meaning moves through space.
 
 __version__ = "0.1.0"
 
+from .decoder import SimpleInterpretableDecoder
 from .dimensions import DimensionMapper, SemanticDimension
 from .encoder import SimpleSemanticEncoder
-from .decoder import SimpleInterpretableDecoder
 from .space import SemanticSpace
 
 __all__ = [

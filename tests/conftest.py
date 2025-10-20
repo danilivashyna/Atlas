@@ -6,8 +6,9 @@ Pytest configuration and fixtures for Atlas tests.
 """
 
 import pytest
+
 from atlas.api import app as app_module
-from atlas.hierarchical import HierarchicalEncoder, HierarchicalDecoder
+from atlas.hierarchical import HierarchicalDecoder, HierarchicalEncoder
 
 
 @pytest.fixture(scope="session", autouse=True)

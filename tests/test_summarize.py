@@ -4,8 +4,8 @@ Tests for length-controlled summarization with semantic preservation.
 Tests the proportional summarization algorithm that preserves 5D semantic ratios.
 """
 
-import pytest
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -41,8 +41,8 @@ class TestSummarizeAPI:
                 "target_tokens": 50,
                 "mode": "compress",
                 "epsilon": 0.05,
-                "preserve_order": True
-            }
+                "preserve_order": True,
+            },
         )
 
         assert response.status_code == 200
@@ -86,8 +86,8 @@ class TestSummarizeAPI:
                 "target_tokens": 100,
                 "mode": "expand",
                 "epsilon": 0.05,
-                "preserve_order": True
-            }
+                "preserve_order": True,
+            },
         )
 
         assert response.status_code == 200
@@ -113,8 +113,8 @@ class TestSummarizeAPI:
                 "target_tokens": 30,
                 "mode": "compress",
                 "epsilon": 0.05,
-                "preserve_order": True
-            }
+                "preserve_order": True,
+            },
         )
 
         assert response.status_code == 200
@@ -127,12 +127,7 @@ class TestSummarizeAPI:
     def test_summarize_empty_text_error(self, client):
         """Test that empty text returns error"""
         response = client.post(
-            "/summarize",
-            json={
-                "text": "",
-                "target_tokens": 50,
-                "mode": "compress"
-            }
+            "/summarize", json={"text": "", "target_tokens": 50, "mode": "compress"}
         )
 
         assert response.status_code == 422  # Validation error
@@ -141,11 +136,7 @@ class TestSummarizeAPI:
         """Test that invalid mode returns error"""
         response = client.post(
             "/summarize",
-            json={
-                "text": "Some text here",
-                "target_tokens": 50,
-                "mode": "invalid_mode"
-            }
+            json={"text": "Some text here", "target_tokens": 50, "mode": "invalid_mode"},
         )
 
         assert response.status_code == 422  # Validation error
@@ -153,12 +144,7 @@ class TestSummarizeAPI:
     def test_summarize_invalid_target_tokens(self, client):
         """Test that invalid target_tokens returns error"""
         response = client.post(
-            "/summarize",
-            json={
-                "text": "Some text here",
-                "target_tokens": -10,
-                "mode": "compress"
-            }
+            "/summarize", json={"text": "Some text here", "target_tokens": -10, "mode": "compress"}
         )
 
         assert response.status_code == 422  # Validation error
@@ -169,12 +155,7 @@ class TestSummarizeAPI:
 
         response = client.post(
             "/summarize",
-            json={
-                "text": text,
-                "target_tokens": 20,
-                "mode": "compress",
-                "preserve_order": True
-            }
+            json={"text": text, "target_tokens": 20, "mode": "compress", "preserve_order": True},
         )
 
         assert response.status_code == 200
@@ -188,23 +169,13 @@ class TestSummarizeAPI:
         # Strict epsilon
         response1 = client.post(
             "/summarize",
-            json={
-                "text": text,
-                "target_tokens": 15,
-                "mode": "compress",
-                "epsilon": 0.01
-            }
+            json={"text": text, "target_tokens": 15, "mode": "compress", "epsilon": 0.01},
         )
 
         # Loose epsilon
         response2 = client.post(
             "/summarize",
-            json={
-                "text": text,
-                "target_tokens": 15,
-                "mode": "compress",
-                "epsilon": 0.5
-            }
+            json={"text": text, "target_tokens": 15, "mode": "compress", "epsilon": 0.5},
         )
 
         assert response1.status_code == 200
@@ -281,11 +252,7 @@ class TestProportionalAlgorithm:
         )
 
         result = summarize(
-            text=text,
-            target_tokens=50,
-            mode="compress",
-            epsilon=0.05,
-            preserve_order=True
+            text=text, target_tokens=50, mode="compress", epsilon=0.05, preserve_order=True
         )
 
         # Check result structure
@@ -312,11 +279,7 @@ class TestProportionalAlgorithm:
         text = "AI is powerful."
 
         result = summarize(
-            text=text,
-            target_tokens=80,
-            mode="expand",
-            epsilon=0.05,
-            preserve_order=True
+            text=text, target_tokens=80, mode="expand", epsilon=0.05, preserve_order=True
         )
 
         assert "summary" in result
@@ -326,12 +289,7 @@ class TestProportionalAlgorithm:
         """Test graceful fallback for empty text"""
         from atlas.summarize import summarize
 
-        result = summarize(
-            text="",
-            target_tokens=50,
-            mode="compress",
-            epsilon=0.05
-        )
+        result = summarize(text="", target_tokens=50, mode="compress", epsilon=0.05)
 
         # Should return empty summary gracefully
         assert result["summary"] == ""
@@ -371,7 +329,7 @@ class TestSelectors:
             "Machine learning is powerful",
             "Deep learning is useful",
             "Machine learning is powerful",  # Exact duplicate
-            "AI is transforming industries"
+            "AI is transforming industries",
         ]
 
         deduped = deduplicate_pieces(pieces, threshold=0.9)
@@ -448,7 +406,7 @@ class TestStabilityAndReproducibility:
         summary = result["summary"]
 
         # Check that summary doesn't have obvious duplicates
-        sentences = summary.split('.')
+        sentences = summary.split(".")
         unique_sentences = set(s.strip().lower() for s in sentences if s.strip())
 
         # Most sentences should be unique (allowing some overlap)
@@ -458,7 +416,7 @@ class TestStabilityAndReproducibility:
 
 @pytest.mark.skipif(
     True,  # Skip by default as this requires feature flag
-    reason="Feature flag test - run manually with ATLAS_SUMMARY_MODE=off"
+    reason="Feature flag test - run manually with ATLAS_SUMMARY_MODE=off",
 )
 class TestFeatureFlag:
     """Test feature flag behavior"""
@@ -466,18 +424,14 @@ class TestFeatureFlag:
     def test_feature_flag_off(self, client):
         """Test that feature can be disabled"""
         import os
+
         os.environ["ATLAS_SUMMARY_MODE"] = "off"
 
         # Reload app with new env var (this is tricky in tests)
         # In practice, this would be tested by starting server with flag
 
         response = client.post(
-            "/summarize",
-            json={
-                "text": "Test text",
-                "target_tokens": 20,
-                "mode": "compress"
-            }
+            "/summarize", json={"text": "Test text", "target_tokens": 20, "mode": "compress"}
         )
 
         # Should return 503 when disabled

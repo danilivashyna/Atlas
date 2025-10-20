@@ -8,13 +8,14 @@ This is the core interface for working with the semantic space.
 It combines encoder, decoder, and visualization capabilities.
 """
 
-import numpy as np
-from typing import Union, List, Dict
-import matplotlib.pyplot as plt
+from typing import Dict, List, Union
 
-from .encoder import SimpleSemanticEncoder
+import matplotlib.pyplot as plt
+import numpy as np
+
 from .decoder import SimpleInterpretableDecoder
 from .dimensions import DimensionMapper, SemanticDimension
+from .encoder import SimpleSemanticEncoder
 
 
 class SemanticSpace:

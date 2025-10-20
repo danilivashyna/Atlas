@@ -14,7 +14,7 @@ from pathlib import Path
 def check_imports():
     """Check that all key modules can be imported"""
     print("🔍 Checking imports...")
-    
+
     checks = [
         ("atlas", "Main package"),
         ("atlas.encoder", "Rule-based encoder"),
@@ -30,7 +30,7 @@ def check_imports():
         ("atlas.metrics.metrics_hier", "Hierarchical metrics (v0.2)"),
         ("atlas.training.distill", "Distillation (v0.2)"),
     ]
-    
+
     failed = []
     for module, description in checks:
         try:
@@ -40,14 +40,14 @@ def check_imports():
             print(f"  ✗ {module:40s} - {description}")
             print(f"    Error: {e}")
             failed.append((module, str(e)))
-    
+
     return len(failed) == 0, failed
 
 
 def check_files():
     """Check that all v0.2 files exist"""
     print("\n🔍 Checking files...")
-    
+
     required_files = [
         "src/atlas/models/__init__.py",
         "src/atlas/models/encoder_bert.py",
@@ -64,7 +64,7 @@ def check_files():
         "v0.2_DEVELOPMENT_PLAN.md",
         "docs/LICENSING.md",
     ]
-    
+
     failed = []
     for filepath in required_files:
         if Path(filepath).exists():
@@ -72,14 +72,14 @@ def check_files():
         else:
             print(f"  ✗ {filepath} (MISSING)")
             failed.append(filepath)
-    
+
     return len(failed) == 0, failed
 
 
 def check_dependencies():
     """Check that required dependencies are installed"""
     print("\n🔍 Checking dependencies...")
-    
+
     dependencies = [
         ("torch", "PyTorch"),
         ("transformers", "Hugging Face Transformers"),
@@ -91,7 +91,7 @@ def check_dependencies():
         ("black", "Black (optional)"),
         ("ruff", "Ruff (optional)"),
     ]
-    
+
     failed = []
     for package, description in dependencies:
         try:
@@ -103,16 +103,16 @@ def check_dependencies():
             print(f"  {status} {package:20s} - {description}")
             if not optional:
                 failed.append(package)
-    
+
     return len(failed) == 0, failed
 
 
 def print_summary(checks_results):
     """Print summary of all checks"""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("📊 VERIFICATION SUMMARY")
-    print("="*70)
-    
+    print("=" * 70)
+
     all_passed = True
     for check_name, (passed, failed_items) in checks_results.items():
         status = "✓ PASS" if passed else "✗ FAIL"
@@ -125,8 +125,8 @@ def print_summary(checks_results):
                 else:
                     print(f"    - {item}")
             all_passed = False
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     if all_passed:
         print("✅ All checks passed! v0.2 setup is complete.")
         print("\n🚀 Next steps:")
@@ -146,16 +146,16 @@ def print_summary(checks_results):
 
 def main():
     """Run all checks"""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("🔍 ATLAS v0.2 VERIFICATION")
-    print("="*70)
-    
+    print("=" * 70)
+
     results = {
         "File Structure": check_files(),
         "Imports": check_imports(),
         "Dependencies": check_dependencies(),
     }
-    
+
     exit_code = print_summary(results)
     sys.exit(exit_code)
 

@@ -10,6 +10,7 @@ Teacher→Student distillation: 1536D embeddings → 5D hierarchical
 """
 
 from typing import Optional
+
 import torch
 import torch.nn.functional as F
 

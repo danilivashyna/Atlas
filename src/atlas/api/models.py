@@ -5,10 +5,11 @@
 Pydantic models for API request/response validation
 """
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EncodeRequest(BaseModel):
@@ -247,23 +248,17 @@ class SummarizeRequest(BaseModel):
     """Request model for /summarize endpoint"""
 
     text: str = Field(..., min_length=1, max_length=50000, description="Text to summarize")
-    target_tokens: int = Field(
-        ..., ge=10, le=5000, description="Target token count for summary"
-    )
+    target_tokens: int = Field(..., ge=10, le=5000, description="Target token count for summary")
     mode: str = Field(
         "compress",
         pattern="^(compress|expand)$",
-        description="Summarization mode: 'compress' or 'expand'"
+        description="Summarization mode: 'compress' or 'expand'",
     )
     epsilon: float = Field(
-        0.05,
-        ge=0.0,
-        le=1.0,
-        description="KL divergence tolerance (lower = stricter preservation)"
+        0.05, ge=0.0, le=1.0, description="KL divergence tolerance (lower = stricter preservation)"
     )
     preserve_order: bool = Field(
-        True,
-        description="Whether to preserve macro order of ideas from source text"
+        True, description="Whether to preserve macro order of ideas from source text"
     )
 
     @field_validator("text")
@@ -280,7 +275,7 @@ class SummarizeRequest(BaseModel):
                 "target_tokens": 120,
                 "mode": "compress",
                 "epsilon": 0.05,
-                "preserve_order": True
+                "preserve_order": True,
             }
         }
     )
@@ -292,27 +287,18 @@ class SummarizeResponse(BaseModel):
     summary: str = Field(..., description="Generated summary")
     length: int = Field(..., description="Actual token count of summary")
     ratio_target: List[float] = Field(
-        ...,
-        min_length=5,
-        max_length=5,
-        description="Target 5D semantic distribution"
+        ..., min_length=5, max_length=5, description="Target 5D semantic distribution"
     )
     ratio_actual: List[float] = Field(
-        ...,
-        min_length=5,
-        max_length=5,
-        description="Actual 5D semantic distribution achieved"
+        ..., min_length=5, max_length=5, description="Actual 5D semantic distribution achieved"
     )
     kl_div: float = Field(..., description="KL divergence between target and actual")
-    trace_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4()),
-        description="Request trace ID"
-    )
+    trace_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Request trace ID")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc)
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z"),
-        description="ISO 8601 timestamp"
+        description="ISO 8601 timestamp",
     )
 
     model_config = ConfigDict(
@@ -324,7 +310,7 @@ class SummarizeResponse(BaseModel):
                 "ratio_actual": [0.27, 0.08, 0.34, 0.11, 0.20],
                 "kl_div": 0.012,
                 "trace_id": "req_sum123abc456",
-                "timestamp": "2025-01-19T12:34:56.789Z"
+                "timestamp": "2025-01-19T12:34:56.789Z",
             }
         }
     )

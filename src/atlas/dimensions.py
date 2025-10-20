@@ -7,8 +7,8 @@ Semantic Dimensions - The 5 axes of meaning
 Each dimension is a regulator of semantic state, like knobs on a thinking mixer.
 """
 
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from typing import Tuple
 
 

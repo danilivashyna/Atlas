@@ -9,11 +9,12 @@ Interact with the 5D semantic space through the command line.
 
 import argparse
 import json
+
 import numpy as np
 
-from atlas.space import SemanticSpace
 from atlas.dimensions import DimensionMapper
-from atlas.hierarchical import HierarchicalEncoder, HierarchicalDecoder
+from atlas.hierarchical import HierarchicalDecoder, HierarchicalEncoder
+from atlas.space import SemanticSpace
 
 
 def print_separator(char="=", length=70):

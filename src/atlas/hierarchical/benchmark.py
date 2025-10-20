@@ -8,11 +8,12 @@ Measures p50/p95 latency and cost statistics for different tree depths
 and expansion configurations.
 """
 
-import time
 import statistics
-from typing import List, Dict, Any
+import time
+from typing import Any, Dict, List
 
-from atlas.hierarchical import HierarchicalEncoder, HierarchicalDecoder, TreeNode
+from .decoder import HierarchicalDecoder
+from .encoder import HierarchicalEncoder, TreeNode
 
 
 class HierarchicalBenchmark:

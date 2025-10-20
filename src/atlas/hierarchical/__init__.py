@@ -8,21 +8,20 @@ This module implements a hierarchical semantic space where each dimension
 can recursively have child dimensions, forming a tree structure.
 """
 
+from .decoder import HierarchicalDecoder
+from .encoder import HierarchicalEncoder
 from .models import (
-    TreeNode,
-    HierarchicalVector,
-    EncodeHierarchicalRequest,
-    EncodeHierarchicalResponse,
     DecodeHierarchicalRequest,
     DecodeHierarchicalResponse,
+    EncodeHierarchicalRequest,
+    EncodeHierarchicalResponse,
+    HierarchicalVector,
     ManipulateHierarchicalRequest,
     ManipulateHierarchicalResponse,
-    PathReasoning,
     PathEdit,
+    PathReasoning,
+    TreeNode,
 )
-from .encoder import HierarchicalEncoder
-from .decoder import HierarchicalDecoder
-from .benchmark import HierarchicalBenchmark, print_benchmark_results
 
 __all__ = [
     "TreeNode",
@@ -37,6 +36,4 @@ __all__ = [
     "PathEdit",
     "HierarchicalEncoder",
     "HierarchicalDecoder",
-    "HierarchicalBenchmark",
-    "print_benchmark_results",
 ]

@@ -5,8 +5,9 @@ This demonstrates the core functionality of encoding, decoding,
 and manipulating meaning in 5D space.
 """
 
-from atlas.space import SemanticSpace
 import numpy as np
+
+from atlas.space import SemanticSpace
 
 
 def main():
@@ -15,19 +16,19 @@ def main():
     print("  Basic Usage Example")
     print("=" * 70)
     print()
-    
+
     # Initialize the semantic space
     space = SemanticSpace()
-    
+
     # Example 1: Encode text to vector
     print("1. ENCODING TEXT TO 5D VECTOR")
     print("-" * 70)
     text = "Собака"
     vector = space.encode(text)
-    print(f"Text: \"{text}\"")
+    print(f'Text: "{text}"')
     print(f"5D Vector: {vector}")
     print()
-    
+
     # Example 2: Decode vector to text with reasoning
     print("2. DECODING VECTOR WITH INTERPRETABLE REASONING")
     print("-" * 70)
@@ -35,9 +36,9 @@ def main():
     result = space.decode(test_vector, with_reasoning=True)
     print(f"Input Vector: {test_vector}")
     print("\nReasoning Process:")
-    print(result['reasoning'])
+    print(result["reasoning"])
     print()
-    
+
     # Example 3: Transform text through the space
     print("3. COMPLETE TRANSFORMATION (Text → Vector → Text)")
     print("-" * 70)
@@ -46,9 +47,9 @@ def main():
     print(f"Original: \"{result['original_text']}\"")
     print(f"Vector: {result['vector']}")
     print("\nDecoded reasoning:")
-    print(result['decoded']['reasoning'])
+    print(result["decoded"]["reasoning"])
     print()
-    
+
     # Example 4: Manipulate a dimension
     print("4. DIMENSION MANIPULATION")
     print("-" * 70)
@@ -58,7 +59,7 @@ def main():
     print(f"Modified: \"{result['modified']['decoded']['text']}\"")
     print(f"Changed: {result['modified']['dimension_changed']}")
     print()
-    
+
     # Example 5: Interpolate between concepts
     print("5. SEMANTIC INTERPOLATION")
     print("-" * 70)
@@ -67,7 +68,7 @@ def main():
     for r in results:
         print(f"Step {r['step']} (α={r['alpha']:.2f}): \"{r['decoded']['text']}\"")
     print()
-    
+
     # Example 6: Explore a dimension
     print("6. DIMENSION EXPLORATION")
     print("-" * 70)
@@ -76,7 +77,7 @@ def main():
     for r in results:
         print(f"Value {r['value']:+.1f}: \"{r['decoded']['text']}\"")
     print()
-    
+
     # Example 7: Get dimension information
     print("7. DIMENSION INFORMATION")
     print("-" * 70)
@@ -85,7 +86,7 @@ def main():
         print(f"{dim}: {details['name']} ({details['poles'][0]} ↔ {details['poles'][1]})")
         print(f"     {details['description']}")
     print()
-    
+
     print("=" * 70)
     print("  End of Basic Example")
     print("=" * 70)

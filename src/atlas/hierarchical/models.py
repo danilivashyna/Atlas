@@ -5,9 +5,10 @@
 Pydantic models for hierarchical semantic space (tree@v2 schema)
 """
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TreeNode(BaseModel):

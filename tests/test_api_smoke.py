@@ -12,6 +12,7 @@ Quick validation of core endpoints:
 """
 
 from fastapi.testclient import TestClient
+
 from atlas.api.app import app
 
 client = TestClient(app)

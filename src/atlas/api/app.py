@@ -7,40 +7,41 @@ Atlas FastAPI Application
 REST API for semantic space operations with encode, decode, and explain endpoints.
 """
 
-import time
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 from importlib.metadata import version as pkg_version
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-import numpy as np
 
 from atlas import SemanticSpace
 from atlas.dimensions import DimensionMapper, SemanticDimension
 from atlas.hierarchical import (
-    HierarchicalEncoder,
-    HierarchicalDecoder,
-    EncodeHierarchicalRequest,
-    EncodeHierarchicalResponse,
     DecodeHierarchicalRequest,
     DecodeHierarchicalResponse,
+    EncodeHierarchicalRequest,
+    EncodeHierarchicalResponse,
+    HierarchicalDecoder,
+    HierarchicalEncoder,
     ManipulateHierarchicalRequest,
     ManipulateHierarchicalResponse,
 )
+
 from .models import (
-    EncodeRequest,
-    EncodeResponse,
     DecodeRequest,
     DecodeResponse,
+    DimensionExplanation,
     DimensionReasoning,
+    EncodeRequest,
+    EncodeResponse,
+    ErrorResponse,
     ExplainRequest,
     ExplainResponse,
-    DimensionExplanation,
-    ErrorResponse,
     HealthResponse,
     MetricsResponse,
     SummarizeRequest,
@@ -55,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 # Feature flags
 import os
+
 SUMMARY_MODE = os.getenv("ATLAS_SUMMARY_MODE", "proportional").lower()
 
 # Get package version
@@ -390,8 +392,7 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
     # Check feature flag
     if SUMMARY_MODE == "off":
         raise HTTPException(
-            status_code=503,
-            detail="Summarization feature is disabled (ATLAS_SUMMARY_MODE=off)"
+            status_code=503, detail="Summarization feature is disabled (ATLAS_SUMMARY_MODE=off)"
         )
 
     try:
@@ -410,7 +411,7 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
             mode=request.mode,
             epsilon=request.epsilon,
             preserve_order=request.preserve_order,
-            encoder=semantic_space.encoder if semantic_space else None
+            encoder=semantic_space.encoder if semantic_space else None,
         )
 
         # Build response
@@ -420,15 +421,12 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
             ratio_target=result["ratio_target"],
             ratio_actual=result["ratio_actual"],
             kl_div=result["kl_div"],
-            trace_id=trace_id
+            trace_id=trace_id,
         )
 
     except Exception as e:
         logger.error(f"Summarize failed (trace_id={trace_id}): {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Summarization failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
 
 
 # Hierarchical API endpoints

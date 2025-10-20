@@ -8,7 +8,8 @@ The decoder doesn't just map vector → word, it explains the story of how meani
 was chosen. It transforms dry numbers into an explainable story of meaning formation.
 """
 
-from typing import List, Dict
+from typing import Dict, List
+
 import numpy as np
 
 from .dimensions import DimensionMapper, SemanticDimension
@@ -16,7 +17,7 @@ from .dimensions import DimensionMapper, SemanticDimension
 try:
     import torch
     import torch.nn as nn
-    from transformers import AutoTokenizer, AutoModelForCausalLM, GPT2LMHeadModel, GPT2Tokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2LMHeadModel, GPT2Tokenizer
 
     TORCH_AVAILABLE = True
 except ImportError:
