@@ -20,7 +20,7 @@ from pathlib import Path
 class DistillationConfig:
     """
     Configuration for knowledge distillation from teacher to student.
-    
+
     Attributes:
         teacher_checkpoint: Path to teacher model checkpoint (.pt or .pth)
         teacher_dim: Dimensionality of teacher embeddings (e.g., 1536 for OpenAI)
@@ -32,7 +32,7 @@ class DistillationConfig:
         curriculum: Enable curriculum learning
         curriculum_stages: Number of curriculum stages
         curriculum_tau_schedule: Temperature schedule for curriculum (start, end)
-    
+
     Example:
         >>> config = DistillationConfig(
         ...     teacher_checkpoint="models/teacher_1536d.pt",
@@ -42,80 +42,79 @@ class DistillationConfig:
         ...     alpha=0.7
         ... )
     """
-    
+
     # Model architecture
     teacher_checkpoint: Optional[str] = None
     teacher_dim: int = 1536
     student_dim: int = 5
-    
+
     # Loss configuration
     tau: float = 1.0
     alpha: float = 0.5
     loss_type: str = "cosine"  # 'cosine' or 'kl'
-    
+
     # Hardware
     device: str = "cpu"
-    
+
     # Curriculum learning
     curriculum: bool = False
     curriculum_stages: int = 3
     curriculum_tau_schedule: tuple = (3.0, 0.5)  # (start_tau, end_tau)
-    
+
     # Additional training params
     batch_size: int = 32
     learning_rate: float = 1e-4
     max_epochs: int = 100
-    
+
     # Checkpoint saving
     save_dir: str = "checkpoints"
     save_every: int = 10  # Save every N epochs
-    
+
     # Validation
     validation_split: float = 0.1
     early_stopping_patience: int = 5
-    
+
     def __post_init__(self):
         """Validate configuration parameters."""
         if not 0 <= self.alpha <= 1:
             raise ValueError(f"alpha must be in [0, 1], got {self.alpha}")
-        
+
         if self.tau <= 0:
             raise ValueError(f"tau must be positive, got {self.tau}")
-        
+
         if self.loss_type not in ["cosine", "kl"]:
             raise ValueError(f"loss_type must be 'cosine' or 'kl', got {self.loss_type}")
-        
+
         if self.device not in ["cpu", "cuda", "auto"]:
             raise ValueError(f"device must be 'cpu', 'cuda', or 'auto', got {self.device}")
-        
+
         if self.curriculum:
             if self.curriculum_stages < 1:
                 raise ValueError(f"curriculum_stages must be >= 1, got {self.curriculum_stages}")
-            
+
             start_tau, end_tau = self.curriculum_tau_schedule
             if start_tau <= end_tau:
                 raise ValueError(
-                    f"curriculum_tau_schedule start ({start_tau}) "
-                    f"must be > end ({end_tau})"
+                    f"curriculum_tau_schedule start ({start_tau}) " f"must be > end ({end_tau})"
                 )
-    
+
     def get_tau_for_stage(self, stage: int) -> float:
         """
         Get temperature for a specific curriculum stage.
-        
+
         Args:
             stage: Current curriculum stage (0-indexed)
-        
+
         Returns:
             Temperature value for this stage
         """
         if not self.curriculum:
             return self.tau
-        
+
         start_tau, end_tau = self.curriculum_tau_schedule
         progress = stage / max(1, self.curriculum_stages - 1)
         return start_tau - (start_tau - end_tau) * progress
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
         return {
@@ -137,7 +136,7 @@ class DistillationConfig:
             "validation_split": self.validation_split,
             "early_stopping_patience": self.early_stopping_patience,
         }
-    
+
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "DistillationConfig":
         """Create config from dictionary."""
