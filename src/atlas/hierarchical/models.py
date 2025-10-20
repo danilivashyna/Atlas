@@ -238,7 +238,9 @@ class NodeExplanation(BaseModel):
 
     path: str = Field(..., description="Path in tree (e.g., 'root', 'dim2/dim2.4')")
     label: str = Field(..., description="Semantic label for this node")
-    value: List[float] = Field(..., min_length=5, max_length=5, description="5D vector at this node")
+    value: List[float] = Field(
+        ..., min_length=5, max_length=5, description="5D vector at this node"
+    )
     weight: Optional[float] = Field(None, ge=0.0, le=1.0, description="Router weight/confidence")
     interpretation: Optional[str] = Field(None, description="Human-readable interpretation")
 

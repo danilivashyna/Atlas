@@ -521,9 +521,7 @@ async def explain_hierarchical(
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     try:
-        logger.info(
-            f"Explaining hierarchical (trace_id={trace_id}, max_depth={request.max_depth})"
-        )
+        logger.info(f"Explaining hierarchical (trace_id={trace_id}, max_depth={request.max_depth})")
 
         # Encode hierarchically
         tree = hierarchical_encoder.encode_hierarchical(
@@ -557,9 +555,7 @@ async def explain_hierarchical(
 
         explain_node(tree)
 
-        return ExplainHierarchicalResponse(
-            tree=tree, nodes=nodes_explanations, trace_id=trace_id
-        )
+        return ExplainHierarchicalResponse(tree=tree, nodes=nodes_explanations, trace_id=trace_id)
 
     except Exception as e:
         logger.error(f"Hierarchical explain failed (trace_id={trace_id}): {e}")
