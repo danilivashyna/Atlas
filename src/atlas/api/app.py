@@ -279,7 +279,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
             # Get dimension info for label
             dim_enum = list(SemanticDimension)[dim_idx]
             info = DimensionMapper.get_dimension_info(dim_enum)
-            
+
             dimensions_reasoning.append(
                 DimensionReasoning(
                     dim=dim_idx,
