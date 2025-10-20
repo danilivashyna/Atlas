@@ -37,3 +37,10 @@ try:
     __all__.append("InterpretableDecoder")
 except ImportError:
     pass
+
+try:
+    from .encoders.text_encoder_5d import TextEncoder5D
+
+    __all__.append("TextEncoder5D")
+except ImportError:
+    pass
