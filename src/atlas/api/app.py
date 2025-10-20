@@ -279,25 +279,25 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
 
         # Extract dimension contributions with evidence from reasoning text
         dimensions_reasoning = []
-        reasoning_lines = reasoning_text.split('\n') if reasoning_text else []
-        
+        reasoning_lines = reasoning_text.split("\n") if reasoning_text else []
+
         for i, dim in enumerate(SemanticDimension):
             dim_value = abs(vector[i])
             if dim_value > 0.1:  # Only include significant dimensions
                 info = DimensionMapper.get_dimension_info(dim)
-                
+
                 # Extract evidence from reasoning text for this dimension
                 evidence = []
                 dim_marker = f"dim₍{i+1}₎"
                 for line in reasoning_lines:
-                    if dim_marker in line and '→' in line:
+                    if dim_marker in line and "→" in line:
                         # Extract interpretation after the arrow
-                        parts = line.split('→')
+                        parts = line.split("→")
                         if len(parts) > 1:
-                            interpretation = parts[1].split('(')[0].strip()
+                            interpretation = parts[1].split("(")[0].strip()
                             if interpretation:
                                 evidence.append(interpretation)
-                
+
                 dimensions_reasoning.append(
                     DimensionReasoning(
                         dim=i,
