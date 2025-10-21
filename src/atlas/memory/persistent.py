@@ -221,3 +221,193 @@ class PersistentMemory:
         if self.conn is not None:
             self.conn.close()
             self.conn = None
+
+    # ---- Nodes (Router v0.4) Interface ----
+
+    def _init_nodes_table(self) -> None:
+        """Create nodes table if it doesn't exist."""
+        if self.conn is None:
+            self._init_db()
+
+        cursor = self.conn.cursor()
+
+        # Create nodes table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS nodes (
+                path TEXT PRIMARY KEY,
+                parent TEXT,
+                v1 REAL NOT NULL,
+                v2 REAL NOT NULL,
+                v3 REAL NOT NULL,
+                v4 REAL NOT NULL,
+                v5 REAL NOT NULL,
+                label TEXT,
+                weight REAL DEFAULT 0.5,
+                meta TEXT
+            )
+        """
+        )
+
+        # Create indices
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path)")
+
+        self.conn.commit()
+
+    def write_node(
+        self,
+        path: str,
+        parent: Optional[str],
+        vec5: List[float],
+        label: Optional[str] = None,
+        weight: float = 0.5,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Write a hierarchical node.
+
+        Args:
+            path: Node path (e.g., "dim2/dim2.4")
+            parent: Parent node path or None for root
+            vec5: 5D vector
+            label: Human-readable label
+            weight: Priority weight [0..1]
+            meta: Optional metadata
+        """
+        self._init_nodes_table()
+
+        if not isinstance(vec5, list) or len(vec5) != 5:
+            raise ValueError("vec5 must be a list of exactly 5 floats")
+
+        cursor = self.conn.cursor()
+        meta_json = json.dumps(meta) if meta else None
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO nodes
+            (path, parent, v1, v2, v3, v4, v5, label, weight, meta)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                path,
+                parent,
+                vec5[0],
+                vec5[1],
+                vec5[2],
+                vec5[3],
+                vec5[4],
+                label,
+                weight,
+                meta_json,
+            ),
+        )
+        self.conn.commit()
+
+    def get_children(self, parent_path: str) -> List[Dict[str, Any]]:
+        """Get all child nodes of a given parent."""
+        self._init_nodes_table()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT path, parent, v1, v2, v3, v4, v5, label, weight, meta
+            FROM nodes
+            WHERE parent = ?
+        """,
+            (parent_path,),
+        )
+        rows = cursor.fetchall()
+
+        result = []
+        for row in rows:
+            path, parent, v1, v2, v3, v4, v5, label, weight, meta_json = row
+            result.append(
+                {
+                    "path": path,
+                    "parent": parent,
+                    "vec5": [v1, v2, v3, v4, v5],
+                    "label": label,
+                    "weight": weight,
+                    "meta": json.loads(meta_json) if meta_json else None,
+                }
+            )
+        return result
+
+    def get_all_nodes(self) -> List[Dict[str, Any]]:
+        """Get all nodes."""
+        self._init_nodes_table()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT path, parent, v1, v2, v3, v4, v5, label, weight, meta
+            FROM nodes
+        """
+        )
+        rows = cursor.fetchall()
+
+        result = []
+        for row in rows:
+            path, parent, v1, v2, v3, v4, v5, label, weight, meta_json = row
+            result.append(
+                {
+                    "path": path,
+                    "parent": parent,
+                    "vec5": [v1, v2, v3, v4, v5],
+                    "label": label,
+                    "weight": weight,
+                    "meta": json.loads(meta_json) if meta_json else None,
+                }
+            )
+        return result
+
+    def knn_nodes(self, vec5: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+        """Query k-nearest nodes by cosine similarity."""
+        self._init_nodes_table()
+
+        if not isinstance(vec5, list) or len(vec5) != 5:
+            raise ValueError("vec5 must be a list of exactly 5 floats")
+
+        all_nodes = self.get_all_nodes()
+
+        scores = []
+        for node in all_nodes:
+            node_vec = node["vec5"]
+            sim = _cosine(vec5, node_vec)
+            scores.append((sim, node))
+
+        scores.sort(key=lambda x: x[0], reverse=True)
+
+        result = []
+        for sim, node in scores[:top_k]:
+            result.append({**node, "score": float(sim)})
+
+        return result
+
+    def stats_nodes(self) -> Dict[str, Any]:
+        """Get statistics for nodes table."""
+        self._init_nodes_table()
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM nodes")
+        count = cursor.fetchone()[0]
+
+        return {
+            "backend": "sqlite",
+            "count_nodes": count,
+            "path": self.db_path,
+        }
+
+    def flush_nodes(self) -> int:
+        """Delete all nodes. Returns count deleted."""
+        self._init_nodes_table()
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM nodes")
+        count = cursor.fetchone()[0]
+
+        cursor.execute("DELETE FROM nodes")
+        self.conn.commit()
+
+        return count

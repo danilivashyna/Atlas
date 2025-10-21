@@ -39,3 +39,34 @@ def get_memory() -> Union["MappaMemory", "PersistentMemory"]:  # type: ignore
 from atlas.memory.mappa import MEMORY  # noqa: E402
 
 __all__ = ["MappaMemory", "MEMORY", "get_memory", "PersistentMemory"]
+
+
+# Node store singleton (for router v0.4)
+_NODE_STORE_INSTANCE: Optional["PersistentMemory"] = None
+
+
+def get_node_store() -> "PersistentMemory":  # type: ignore
+    """
+    Get node store singleton.
+
+    Currently nodes are stored in the same SQLite database as items
+    (via PersistentMemory). get_node_store() returns the same instance
+    as get_memory() when backend is 'sqlite'.
+
+    For 'inproc' backend, creates a separate PersistentMemory just for nodes.
+    """
+    global _NODE_STORE_INSTANCE
+
+    backend = os.getenv("ATLAS_MEMORY_BACKEND", "inproc").lower()
+
+    if _NODE_STORE_INSTANCE is None:
+        if backend == "sqlite":
+            # Reuse the memory instance (same SQLite connection)
+            _NODE_STORE_INSTANCE = get_memory()
+        else:
+            # For inproc, create a minimal SQLite store for nodes only
+            from atlas.memory.persistent import PersistentMemory
+
+            _NODE_STORE_INSTANCE = PersistentMemory()
+
+    return _NODE_STORE_INSTANCE

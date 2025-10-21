@@ -62,6 +62,13 @@ SUMMARY_MODE = os.getenv("ATLAS_SUMMARY_MODE", "proportional").lower()
 MEMORY_MODE = os.getenv("ATLAS_MEMORY_MODE", "on").lower()
 # Memory backend: inproc | sqlite
 MEMORY_BACKEND = os.getenv("ATLAS_MEMORY_BACKEND", "inproc").lower()
+# Router feature flag: on|off
+ROUTER_MODE = os.getenv("ATLAS_ROUTER_MODE", "on").lower()
+# Router scoring parameters
+ROUTER_ALPHA = float(os.getenv("ATLAS_ROUTER_ALPHA", "0.7"))
+ROUTER_BETA = float(os.getenv("ATLAS_ROUTER_BETA", "0.2"))
+ROUTER_GAMMA = float(os.getenv("ATLAS_ROUTER_GAMMA", "0.1"))
+ROUTER_TAU = float(os.getenv("ATLAS_ROUTER_TAU", "0.5"))
 
 # Get package version
 try:
@@ -126,6 +133,15 @@ try:
     logger.info("Memory routes registered")
 except Exception as e:
     logger.warning("Memory routes not registered: %s", e)
+
+# Router routes (route, activate)
+try:
+    from atlas.api import router_routes as _rr
+
+    app.include_router(_rr.router)  # tags=["Router"] set in router
+    logger.info("Router routes registered")
+except Exception as e:
+    logger.warning("Router routes not registered: %s", e)
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
@@ -624,6 +640,10 @@ async def root():
             "explain": "POST /explain - Explain text's semantic representation",
             "summarize": "POST /summarize - Length-controlled summarization with semantic preservation",
             "memory": "POST /memory/* - Memory backend (write/query/flush/load) + GET /memory/stats",
+            "router": {
+                "route": "POST /router/route - Route text to hierarchical nodes",
+                "activate": "POST /router/activate - Soft-activate children of a node",
+            },
             "encode_h": "POST /encode_h - Encode text to hierarchical tree",
             "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
             "manipulate_h": "POST /manipulate_h - Manipulate tree paths",

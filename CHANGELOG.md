@@ -1,3 +1,62 @@
+# v0.4 — Router v0: Path-Aware Routing + Hierarchical Memory
+
+Path-aware routing via 5D encoding with hierarchical node scoring and soft child activation.
+
+## Summary
+
+- **Router**: POST `/router/route` (score nodes), POST `/router/activate` (soft-activate children)
+- **Nodes Table**: SQLite table for hierarchical nodes (path, parent, vec5, label, weight, meta)
+- **Scoring**: score = α·cosine + β·prior + γ·child_bonus (configurable weights)
+- **Activation**: Softmax-based soft activation with temperature τ
+- **Feature flags**:
+  - `ATLAS_ROUTER_MODE = on | off` (default: on)
+  - `ATLAS_ROUTER_ALPHA=0.7`, `ATLAS_ROUTER_BETA=0.2`, `ATLAS_ROUTER_GAMMA=0.1`, `ATLAS_ROUTER_TAU=0.5`
+
+## New Files
+
+- `src/atlas/router/path_router.py` — PathRouter class
+- `src/atlas/api/router_routes.py` — FastAPI routes
+- `tests/test_router_api.py` — Test suite
+- `docs/v0.4_ROUTER.md` — Full documentation
+
+## New Endpoints
+
+### POST /router/route
+Route text to top-k hierarchical nodes.
+- Request: `{ "text": "...", "top_k": 3 }`
+- Response: `{ "items": [{"path": "...", "score": 0.83, "label": "...", "meta": null}], "trace_id": "..." }`
+
+### POST /router/activate
+Soft-activate children of a node.
+- Request: `{ "path": "dim2/dim2.4", "text": "..." }`
+- Response: `{ "children": [{"path": "...", "p": 0.62}, ...], "trace_id": "..." }`
+
+## Database Extension
+
+Added `nodes` table to SQLite (same DB as items table):
+
+```sql
+CREATE TABLE nodes (
+    path TEXT PRIMARY KEY,
+    parent TEXT,
+    v1..v5 REAL,
+    label TEXT,
+    weight REAL DEFAULT 0.5,
+    meta JSON
+);
+CREATE INDEX idx_nodes_parent ON nodes(parent);
+CREATE INDEX idx_nodes_path ON nodes(path);
+```
+
+## Backward Compatibility
+
+- ✅ All v0.3 endpoints unchanged
+- ✅ All v0.2 endpoints unchanged
+- ✅ Router optional (can be disabled via `ATLAS_ROUTER_MODE=off`)
+- ✅ No breaking changes to /encode, /decode, /explain, /summarize, /memory/*, /encode_h, /decode_h, /manipulate_h
+
+---
+
 # v0.3 — Memory Persistence
 
 Persistent memory backends (SQLite), extended management API, unified factory.
