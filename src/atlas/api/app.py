@@ -117,14 +117,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Register optional memory routes (safe import)
+# ---- Optional feature sets -------------------------------------------------
+# Memory routes (write, query, flush, load, stats)
 try:
-    from atlas.api.memory_routes import router as memory_router
+    from atlas.api import memory_routes as _mr
 
-    app.include_router(memory_router)
-except Exception:
-    # Memory optional - skip if not available (tests may run without it)
-    pass
+    app.include_router(_mr.router)  # tags=["Memory"] set in router
+    logger.info("Memory routes registered")
+except Exception as e:
+    logger.warning("Memory routes not registered: %s", e)
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
@@ -143,7 +144,7 @@ try:
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 except Exception as e:
-    pass  # Static files optional
+    logger.debug("Static mount skipped: %s", e)
 
 
 # Middleware for request tracking
@@ -621,7 +622,8 @@ async def root():
             "encode": "POST /encode - Encode text to 5D vector",
             "decode": "POST /decode - Decode vector to text with reasoning",
             "explain": "POST /explain - Explain text's semantic representation",
-            "summarize": "POST /summarize - Length-controlled summarization with semantic preservation (NEW)",
+            "summarize": "POST /summarize - Length-controlled summarization with semantic preservation",
+            "memory": "POST /memory/* - Memory backend (write/query/flush/load) + GET /memory/stats",
             "encode_h": "POST /encode_h - Encode text to hierarchical tree",
             "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
             "manipulate_h": "POST /manipulate_h - Manipulate tree paths",
