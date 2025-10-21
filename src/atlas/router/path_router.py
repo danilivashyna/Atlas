@@ -1,8 +1,14 @@
 """
 Path-aware router: routes text to semantic nodes via 5D cosine + hierarchical priors.
 
-Scoring formula:
-  score(n) = α * cosine(v(text), n.vec5) + β * n.weight + γ * child_bonus
+Scoring formula (v0.5+):
+  score(n) = α * cosine_norm + β * weight + γ * child_bonus + δ * prior_path
+
+  where:
+    cosine_norm = (cosine(text_vec, node.vec5) + 1) / 2  ∈ [0, 1]
+    weight = node.weight ∈ [0, 1]
+    child_bonus = I(best_child_scores_higher_than_node)
+    prior_path = Σ(weight(parent^d) * decay^d) for d=1..D  (inherited weight with decay)
 
 Soft child activation uses softmax with temperature τ.
 """
@@ -44,37 +50,60 @@ class PathRouter:
     - node_store (get_node_store()) to fetch nodes and their relationships
     """
 
-    def __init__(self, encoder, node_store, alpha=None, beta=None, gamma=None, tau=None):
+    def __init__(
+        self,
+        encoder,
+        node_store,
+        alpha=None,
+        beta=None,
+        gamma=None,
+        delta=None,
+        tau=None,
+        decay=None,
+        ann_index=None,
+    ):
         """
         Args:
             encoder: SemanticSpace with encode() method
-            node_store: NodeStore with knn_nodes(), get_children() methods
+            node_store: NodeStore with knn_nodes(), get_children(), get_all_nodes() methods
             alpha: weight on cosine similarity (default from env: 0.7)
-            beta: weight on node.weight prior (default from env: 0.2)
+            beta: weight on node.weight prior (default from env: 0.15)
             gamma: weight on child_bonus (default from env: 0.1)
+            delta: weight on inherited path prior (default from env: 0.05)  [NEW v0.5]
             tau: softmax temperature (default from env: 0.5)
+            decay: exponential decay for inherited weights up tree (default from env: 0.85)  [NEW v0.5]
+            ann_index: optional NodeANN instance for fast kNN (default: None, uses full scan)  [NEW v0.5]
         """
         self.encoder = encoder
         self.node_store = node_store
+        self.ann_index = ann_index
 
         # Load params from env or use provided values
         self.alpha = alpha or float(os.getenv("ATLAS_ROUTER_ALPHA", "0.7"))
-        self.beta = beta or float(os.getenv("ATLAS_ROUTER_BETA", "0.2"))
+        self.beta = beta or float(os.getenv("ATLAS_ROUTER_BETA", "0.15"))
         self.gamma = gamma or float(os.getenv("ATLAS_ROUTER_GAMMA", "0.1"))
+        self.delta = delta or float(os.getenv("ATLAS_ROUTER_DELTA", "0.05"))  # NEW
         self.tau = tau or float(os.getenv("ATLAS_ROUTER_TAU", "0.5"))
+        self.decay = decay or float(os.getenv("ATLAS_ROUTER_DECAY", "0.85"))  # NEW
+
+        # Verify weights sum approximately to 1.0
+        weight_sum = self.alpha + self.beta + self.gamma + self.delta
+        if abs(weight_sum - 1.0) > 0.01:
+            logger.warning(f"Router weights sum to {weight_sum:.3f}, not ~1.0")
 
         logger.debug(
             f"PathRouter initialized: α={self.alpha}, β={self.beta}, "
-            f"γ={self.gamma}, τ={self.tau}"
+            f"γ={self.gamma}, δ={self.delta}, τ={self.tau}, decay={self.decay}"
         )
 
-    def route(self, text: str, top_k: int = 3) -> list[PathScore]:
+    def route(self, text: str, top_k: int = 3, use_ann: bool = True) -> list[PathScore]:
         """
-        Route text to top-k nodes via 5D encoding + scoring.
+        Route text to top-k nodes via 5D encoding + path-aware scoring.
 
         Args:
             text: input text
             top_k: number of top nodes to return
+            use_ann: if True and ann_index exists, use ANN for candidate selection (faster)  [NEW v0.5]
 
         Returns:
             list[PathScore] sorted by score descending
@@ -86,14 +115,26 @@ class PathRouter:
                 logger.warning("Encoder returned None for text: %s", text[:50])
                 return []
 
-            # Fetch all nodes from store (or use knn if available)
-            nodes = self.node_store.get_all_nodes()
-            if not nodes:
+            # Fetch candidate nodes: use ANN if available and enabled, else full scan
+            if use_ann and self.ann_index is not None:
+                # Get more candidates from ANN to ensure we score all relevant nodes
+                ann_candidates = self.ann_index.query(vec, top_k=top_k * 3)
+                candidate_paths = {r.path for r in ann_candidates}
+                candidate_nodes = [
+                    n for n in self.node_store.get_all_nodes() if n.get("path") in candidate_paths
+                ]
+                logger.debug(
+                    f"Using ANN: {len(candidate_nodes)} candidate nodes from {len(ann_candidates)} ANN results"
+                )
+            else:
+                candidate_nodes = self.node_store.get_all_nodes()
+
+            if not candidate_nodes:
                 logger.info("No nodes in store; returning empty route")
                 return []
 
             scores = []
-            for node in nodes:
+            for node in candidate_nodes:
                 score = self._score_node(vec, node)
                 scores.append(
                     PathScore(
@@ -160,13 +201,13 @@ class PathRouter:
 
     def _score_node(self, vec: np.ndarray, node: dict) -> float:
         """
-        Compute score for a single node.
+        Compute score for a single node with path-aware priors.
 
-        score = α * cosine_similarity + β * node.weight + γ * child_bonus
+        score = α * cosine_norm + β * weight + γ * child_bonus + δ * prior_path
 
         Args:
             vec: 5D input vector
-            node: node dict with 'vec5' and 'weight' fields
+            node: node dict with 'path', 'vec5', 'weight', 'parent' fields
 
         Returns:
             float score
@@ -180,6 +221,9 @@ class PathRouter:
 
         # Prior weight (0..1, default 0.5)
         weight = node.get("weight", 0.5)
+
+        # Path-aware prior: inherited weights with exponential decay  [NEW v0.5]
+        prior_path = self._compute_path_prior(node.get("path"), node.get("parent"))
 
         # Child bonus: check if any children score higher (fast heuristic)
         child_bonus = 0.0
@@ -195,8 +239,53 @@ class PathRouter:
         except Exception:
             pass  # No child bonus if lookup fails
 
-        score = self.alpha * cosine_norm + self.beta * weight + self.gamma * child_bonus
+        score = (
+            self.alpha * cosine_norm
+            + self.beta * weight
+            + self.gamma * child_bonus
+            + self.delta * prior_path
+        )
         return float(score)
+
+    def _compute_path_prior(self, path: str, parent: Optional[str]) -> float:
+        """
+        Compute inherited weight from ancestors with exponential decay.
+
+        prior_path = Σ(weight(parent^d) * decay^d) for d=1..D
+
+        Args:
+            path: current node path (e.g., 'dim2/dim2.4')
+            parent: parent path (e.g., 'dim2'), or None for root
+
+        Returns:
+            float in [0, 1]
+        """
+        prior = 0.0
+        current_parent = parent
+        depth = 1
+
+        while current_parent is not None and depth <= 10:  # Limit traversal depth
+            try:
+                # Get parent node to extract its weight
+                parent_nodes = [
+                    n for n in self.node_store.get_all_nodes() if n.get("path") == current_parent
+                ]
+                if parent_nodes:
+                    parent_node = parent_nodes[0]
+                    parent_weight = parent_node.get("weight", 0.5)
+                    decay_factor = self.decay**depth
+                    contribution = parent_weight * decay_factor
+                    prior += contribution
+
+                    # Move to parent's parent
+                    current_parent = parent_node.get("parent")
+                    depth += 1
+                else:
+                    break
+            except Exception:
+                break
+
+        return float(min(prior, 1.0))  # Clamp to [0, 1]
 
     @staticmethod
     def _cosine(v1: np.ndarray, v2: np.ndarray) -> float:

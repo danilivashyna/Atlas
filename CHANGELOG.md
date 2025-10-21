@@ -1,3 +1,111 @@
+# v0.5 — Router++ / Path-Aware / ANN / Reticulum v0
+
+Advanced hierarchical routing with fast ANN indexing, inherited path priors, batch operations, and content-node associations (mini-RAG).
+
+## Summary
+
+- **ANN Indexing**: Fast kNN via FAISS (or inproc fallback); ~10x speedup for 10k+ nodes
+- **Path-Aware Priors**: Hierarchical weight inheritance with exponential decay (δ ≈ 0.05, decay ≈ 0.85)
+- **Batch Routing**: POST `/router/route_batch` for efficient multi-query processing
+- **Reticulum v0**: Content-node associations; subtree link queries for semantic retrieval
+- **Mensum v0 Metrics**: Router, Reticulum, ANN statistics exported via `/metrics`
+- **Feature flags**:
+  - `ATLAS_ROUTER_DELTA=0.05` — path-aware prior weight
+  - `ATLAS_ROUTER_DECAY=0.85` — hierarchical weight decay
+  - `ATLAS_ANN_BACKEND=inproc|faiss|off` — ANN backend
+  - `ATLAS_ANN_INDEX_PATH=/tmp/atlas_nodes.faiss` — persistence path
+
+## New Files
+
+- `src/atlas/router/ann_index.py` — ANN backends (InprocessANN, FAISSANNIndex)
+- `src/atlas/api/router_batch_routes.py` — Batch routing + index rebuild
+- `src/atlas/api/reticulum_routes.py` — Content link endpoints
+- `src/atlas/metrics/mensum.py` — v0.5 metrics collection
+- `tests/test_v0_5.py` — Comprehensive test suite (13 tests)
+- `docs/v0.5_ROUTER_ANN_RETICULUM.md` — Full v0.5 documentation
+
+## Enhanced Files
+
+- `src/atlas/router/path_router.py`:
+  - Added `delta`, `decay` parameters
+  - Scoring now includes path-aware prior: score = α·cos + β·weight + γ·child + δ·prior_path
+  - Optional ANN for candidate selection (`use_ann` parameter)
+  - New method: `_compute_path_prior(path, parent)` with exponential decay
+
+- `src/atlas/memory/persistent.py`:
+  - New `links` table for Reticulum content associations
+  - Methods: `write_link()`, `get_links()`, `query_links()`, `delete_link()`, `flush_links()`, `stats_links()`
+  - Subtree queries via path prefix matching
+
+- `src/atlas/api/app.py`:
+  - Router registration: `router_batch_routes`, `reticulum_routes`
+  - Env flags: DELTA, DECAY, ANN_BACKEND, ANN_INDEX_PATH
+  - Root endpoint updated with v0.5 section
+  - Metrics endpoint includes mensum v0
+
+## New Endpoints
+
+### POST /router/route_batch (batch routing, v0.5)
+```json
+{
+  "items": [{"text": "query1", "top_k": 3}, {"text": "query2", "top_k": 5}],
+  "use_ann": true,
+  "rebuild_index": false
+}
+→ {"results": [[items...], [items...]], "trace_id": "..."}
+```
+
+### POST /router/index/rebuild (ANN management, v0.5)
+```json
+{"backend": "faiss"}
+→ {"ok": true, "count": 1234, "backend": "faiss", "trace_id": "..."}
+```
+
+### POST /reticulum/link (content linking, v0.5)
+```json
+{
+  "path": "dim2/dim2.4",
+  "content_id": "doc:wiki/cats",
+  "kind": "doc",
+  "score": 0.92,
+  "meta": {"title": "Cats 101"}
+}
+→ {"ok": true, "trace_id": "..."}
+```
+
+### POST /reticulum/query (content retrieval, v0.5)
+```json
+{"path": "dim2", "top_k": 10}
+→ {"items": [{"content_id": "...", "kind": "doc", "score": 0.92, "meta": {...}}], "trace_id": "..."}
+```
+
+## Database Extension
+
+Added `links` table to SQLite (Reticulum):
+
+```sql
+CREATE TABLE links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_path TEXT NOT NULL,
+    content_id TEXT NOT NULL,
+    kind TEXT DEFAULT 'doc',
+    score REAL DEFAULT 0.0,
+    meta TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_links_node ON links(node_path);
+CREATE INDEX idx_links_content ON links(content_id);
+```
+
+## Backward Compatibility
+
+- v0.4 routes (`/router/route`, `/router/activate`) fully backward compatible
+- Path-aware prior opt-in (δ default ≈ 0.05, can be set to 0)
+- Existing deployments upgrade without code changes
+- New features require explicit env flags or API calls
+
+---
+
 # v0.4 — Router v0: Path-Aware Routing + Hierarchical Memory
 
 Path-aware routing via 5D encoding with hierarchical node scoring and soft child activation.

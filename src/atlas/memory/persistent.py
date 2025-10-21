@@ -411,3 +411,138 @@ class PersistentMemory:
         self.conn.commit()
 
         return count
+
+    # ===== RETICULUM: Content Links (v0.5+) =====
+
+    def _init_links_table(self) -> None:
+        """Create links table if it doesn't exist. Links associate nodes with content."""
+        cursor = self.conn.cursor()
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_path TEXT NOT NULL,
+                content_id TEXT NOT NULL,
+                kind TEXT DEFAULT 'doc',
+                score REAL DEFAULT 0.0,
+                meta TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        # Indices
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_links_node ON links(node_path)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_links_content ON links(content_id)
+            """
+        )
+
+        self.conn.commit()
+
+    def write_link(
+        self,
+        node_path: str,
+        content_id: str,
+        kind: str = "doc",
+        score: float = 0.0,
+        meta: Optional[dict] = None,
+    ) -> None:
+        """Write or update a link between a node and content."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        meta_str = json.dumps(meta) if meta else None
+        cursor.execute(
+            "INSERT OR REPLACE INTO links (node_path, content_id, kind, score, meta) VALUES (?, ?, ?, ?, ?)",
+            (node_path, content_id, kind, score, meta_str),
+        )
+        self.conn.commit()
+
+    def get_links(self, node_path: str) -> List[Dict[str, Any]]:
+        """Get all links for a specific node."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT id, node_path, content_id, kind, score, meta FROM links WHERE node_path = ? ORDER BY score DESC",
+            (node_path,),
+        )
+        results = []
+        for row in cursor.fetchall():
+            meta = json.loads(row[5]) if row[5] else None
+            results.append(
+                {
+                    "id": row[0],
+                    "node_path": row[1],
+                    "content_id": row[2],
+                    "kind": row[3],
+                    "score": row[4],
+                    "meta": meta,
+                }
+            )
+        return results
+
+    def query_links(
+        self, path_prefix: Optional[str] = None, top_k: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Query links, optionally filtered by path prefix for subtree search."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        if path_prefix:
+            like_pattern = f"{path_prefix}%"
+            cursor.execute(
+                "SELECT id, node_path, content_id, kind, score, meta FROM links WHERE node_path LIKE ? ORDER BY score DESC LIMIT ?",
+                (like_pattern, top_k),
+            )
+        else:
+            cursor.execute(
+                "SELECT id, node_path, content_id, kind, score, meta FROM links ORDER BY score DESC LIMIT ?",
+                (top_k,),
+            )
+        results = []
+        for row in cursor.fetchall():
+            meta = json.loads(row[5]) if row[5] else None
+            results.append(
+                {
+                    "id": row[0],
+                    "node_path": row[1],
+                    "content_id": row[2],
+                    "kind": row[3],
+                    "score": row[4],
+                    "meta": meta,
+                }
+            )
+        return results
+
+    def delete_link(self, link_id: int) -> bool:
+        """Delete a link by ID. Returns True if deleted."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM links WHERE id = ?", (link_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def flush_links(self) -> int:
+        """Delete all links. Returns count deleted."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM links")
+        count = cursor.fetchone()[0]
+        cursor.execute("DELETE FROM links")
+        self.conn.commit()
+        return count
+
+    def stats_links(self) -> Dict[str, Any]:
+        """Get statistics for links table."""
+        self._init_links_table()
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM links")
+        count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT content_id) FROM links")
+        unique_content = cursor.fetchone()[0]
+        return {"count_links": count, "count_unique_content": unique_content}

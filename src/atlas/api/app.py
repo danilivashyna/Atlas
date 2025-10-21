@@ -66,9 +66,15 @@ MEMORY_BACKEND = os.getenv("ATLAS_MEMORY_BACKEND", "inproc").lower()
 ROUTER_MODE = os.getenv("ATLAS_ROUTER_MODE", "on").lower()
 # Router scoring parameters
 ROUTER_ALPHA = float(os.getenv("ATLAS_ROUTER_ALPHA", "0.7"))
-ROUTER_BETA = float(os.getenv("ATLAS_ROUTER_BETA", "0.2"))
+ROUTER_BETA = float(os.getenv("ATLAS_ROUTER_BETA", "0.15"))
 ROUTER_GAMMA = float(os.getenv("ATLAS_ROUTER_GAMMA", "0.1"))
+ROUTER_DELTA = float(os.getenv("ATLAS_ROUTER_DELTA", "0.05"))  # v0.5: path-aware prior
 ROUTER_TAU = float(os.getenv("ATLAS_ROUTER_TAU", "0.5"))
+ROUTER_DECAY = float(os.getenv("ATLAS_ROUTER_DECAY", "0.85"))  # v0.5: inherited weight decay
+
+# ANN index (v0.5)
+ANN_BACKEND = os.getenv("ATLAS_ANN_BACKEND", "inproc")  # inproc | faiss | off
+ANN_INDEX_PATH = os.getenv("ATLAS_ANN_INDEX_PATH", "/tmp/atlas_nodes.faiss")
 
 # Get package version
 try:
@@ -142,6 +148,24 @@ try:
     logger.info("Router routes registered")
 except Exception as e:
     logger.warning("Router routes not registered: %s", e)
+
+# Router batch + index routes (v0.5)
+try:
+    from atlas.api import router_batch_routes as _rbr
+
+    app.include_router(_rbr.router)  # tags=["Router"] set in router
+    logger.info("Router batch routes registered")
+except Exception as e:
+    logger.warning("Router batch routes not registered: %s", e)
+
+# Reticulum routes (content links, v0.5)
+try:
+    from atlas.api import reticulum_routes as _reticulum
+
+    app.include_router(_reticulum.router)  # tags=["Reticulum"] set in router
+    logger.info("Reticulum routes registered")
+except Exception as e:
+    logger.warning("Reticulum routes not registered: %s", e)
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
@@ -254,12 +278,30 @@ async def readiness_check():
 
 @app.get("/metrics", response_model=MetricsResponse, tags=["Health"])
 async def get_metrics():
-    """Prometheus-compatible metrics endpoint"""
+    """Prometheus-compatible metrics endpoint (includes v0.5 mensum metrics)"""
     # Calculate average latencies
     avg_latency = {}
     for endpoint, latencies in metrics["latencies"].items():
         if latencies:
             avg_latency[endpoint] = sum(latencies) / len(latencies)
+
+    # Get v0.5 mensum metrics
+    try:
+        from atlas.metrics.mensum import get_metrics as get_mensum_metrics
+
+        mensum = get_mensum_metrics().to_dict()
+        # Merge mensum into response
+        base_response = {
+            "requests_total": metrics["requests_total"],
+            "requests_by_endpoint": metrics["requests_by_endpoint"],
+            "avg_latency_ms": avg_latency,
+            "errors_total": metrics["errors_total"],
+        }
+        # Include v0.5 mensum metrics
+        base_response["v0_5_mensum"] = mensum
+        return base_response
+    except Exception:
+        pass
 
     return MetricsResponse(
         requests_total=metrics["requests_total"],
@@ -643,13 +685,19 @@ async def root():
             "router": {
                 "route": "POST /router/route - Route text to hierarchical nodes",
                 "activate": "POST /router/activate - Soft-activate children of a node",
+                "route_batch": "POST /router/route_batch - Batch routing queries (v0.5)",
+                "index_rebuild": "POST /router/index/rebuild - Rebuild ANN index (v0.5)",
+            },
+            "reticulum": {
+                "link": "POST /reticulum/link - Link content to a node (v0.5)",
+                "query": "POST /reticulum/query - Query linked content by path (v0.5)",
             },
             "encode_h": "POST /encode_h - Encode text to hierarchical tree",
             "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
             "manipulate_h": "POST /manipulate_h - Manipulate tree paths",
             "health": "GET /health - Health check",
             "ready": "GET /ready - Readiness check",
-            "metrics": "GET /metrics - Prometheus metrics",
+            "metrics": "GET /metrics - Prometheus metrics + v0.5 metrics (mensum)",
             "docs": "GET /docs - Interactive API documentation",
         },
         "hierarchical": {
