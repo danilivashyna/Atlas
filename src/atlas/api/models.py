@@ -260,6 +260,14 @@ class SummarizeRequest(BaseModel):
     preserve_order: bool = Field(
         True, description="Whether to preserve macro order of ideas from source text"
     )
+    # Memory integration fields (stage B)
+    memory_top_k: int = Field(
+        3, ge=1, le=50, description="Number of memory items to retrieve per query"
+    )
+    memory_weight: float = Field(
+        0.25, ge=0.0, le=1.0, description="Weight of memory when blending evidence"
+    )
+    use_memory: bool = Field(True, description="Whether to use memory for evidence blending")
 
     @field_validator("text")
     @classmethod
@@ -276,6 +284,9 @@ class SummarizeRequest(BaseModel):
                 "mode": "compress",
                 "epsilon": 0.05,
                 "preserve_order": True,
+                "use_memory": True,
+                "memory_top_k": 3,
+                "memory_weight": 0.25,
             }
         }
     )

@@ -310,6 +310,9 @@ def summarize(
     epsilon: float = 0.05,
     preserve_order: bool = True,
     encoder=None,
+    use_memory: bool = True,
+    memory_top_k: int = 3,
+    memory_weight: float = 0.25,
 ) -> Dict[str, Any]:
     """
     Perform proportional summarization with KL-divergence control.
@@ -361,6 +364,77 @@ def summarize(
 
     # Step 3: Collect evidence per dimension
     evidence = collect_evidence_per_dimension(text, source_vector)
+
+    # === Memory blending (optional) ===
+    try:
+        import os
+
+        MEMORY_MODE = os.getenv("ATLAS_MEMORY_MODE", "on").lower()
+    except Exception:
+        MEMORY_MODE = "on"
+
+    if use_memory and MEMORY_MODE != "off":
+        try:
+            # Lazy import memory backend
+            from atlas.memory import get_memory
+
+            mem = get_memory()
+            mem_items = []
+            try:
+                mem_items = mem.query(list(source_vector), top_k=int(memory_top_k))
+            except Exception:
+                mem_items = []
+
+            if mem_items:
+                # Convert memory items into per-dimension evidence
+                # memory items provide meta.title and vector
+                memory_evidence = {i: [] for i in range(5)}
+
+                for item in mem_items:
+                    v = item.get("vector")
+                    meta = item.get("meta") or {}
+                    title = None
+                    if isinstance(meta, dict):
+                        title = meta.get("title")
+
+                    # synthetic keywords fallback
+                    synthetic = []
+                    if title:
+                        synthetic = extract_keywords(title, top_k=5)
+                        synthetic = [kw for kw, _ in synthetic]
+
+                    # If vector present, derive per-dim strength
+                    if isinstance(v, list) and len(v) == 5:
+                        for i, val in enumerate(v):
+                            # base score from absolute value
+                            score = abs(val)
+                            # boost if title keywords present (lightweight)
+                            if any(kw in (title or "").lower() for kw in synthetic):
+                                score *= 1.2
+                            snippet = title or (" ".join(synthetic) if synthetic else "")
+                            if score > 0:
+                                memory_evidence[i].append((snippet, float(score)))
+
+                # Normalize and blend memory evidence with local evidence
+                for i in range(5):
+                    # aggregate local and memory scores per-dimension
+                    local_scores = {t: s for t, s in evidence.get(i, [])}
+                    mem_scores = {t: s for t, s in memory_evidence.get(i, [])}
+
+                    # Convert to combined list: keep unique snippets, blend weights
+                    combined = {}
+                    for t, s in local_scores.items():
+                        combined[t] = s * (1.0 - memory_weight)
+                    for t, s in mem_scores.items():
+                        combined[t] = combined.get(t, 0.0) + s * memory_weight
+
+                    # Recreate evidence list sorted
+                    combined_list = sorted(combined.items(), key=lambda x: x[1], reverse=True)
+                    evidence[i] = [(t, float(s)) for t, s in combined_list]
+
+        except Exception:
+            # Memory integration must be best-effort — ignore on failure
+            pass
 
     # Check if we have any evidence
     has_evidence = any(len(ev) > 0 for ev in evidence.values())

@@ -58,6 +58,10 @@ logger = logging.getLogger(__name__)
 import os
 
 SUMMARY_MODE = os.getenv("ATLAS_SUMMARY_MODE", "proportional").lower()
+# Memory feature flag: on|off
+MEMORY_MODE = os.getenv("ATLAS_MEMORY_MODE", "on").lower()
+# Memory backend: inproc | sqlite
+MEMORY_BACKEND = os.getenv("ATLAS_MEMORY_BACKEND", "inproc").lower()
 
 # Get package version
 try:
@@ -88,6 +92,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Semantic Space: {e}")
         raise
 
+    # Attempt to register optional memory routes at startup. This is done here
+    # (not only at import time) so that TestClient and other runtimes pick up
+    # the routes even if the module import happened earlier.
+    try:
+        import atlas.api.memory_routes  # noqa: F401
+    except Exception:
+        # Memory package optional - ignore if missing or broken during tests
+        logger.debug("Optional memory routes not available at startup")
+
     yield
 
     # Shutdown
@@ -103,6 +116,15 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+# Register optional memory routes (safe import)
+try:
+    from atlas.api.memory_routes import router as memory_router
+
+    app.include_router(memory_router)
+except Exception:
+    # Memory optional - skip if not available (tests may run without it)
+    pass
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
@@ -412,6 +434,9 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
             epsilon=request.epsilon,
             preserve_order=request.preserve_order,
             encoder=semantic_space.encoder if semantic_space else None,
+            use_memory=request.use_memory,
+            memory_top_k=int(request.memory_top_k),
+            memory_weight=float(request.memory_weight),
         )
 
         # Build response

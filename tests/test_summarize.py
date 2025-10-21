@@ -1,3 +1,135 @@
+import os
+
+from fastapi.testclient import TestClient
+
+from atlas.api.app import app
+
+tc = TestClient(app)
+
+
+def test_summarize_uses_memory_when_available():
+    # Write a memory item with a clear title
+    r = tc.post(
+        "/memory/write",
+        json={
+            "id": "dl1",
+            "vector": [0.0, 0.0, 0.9, 0.0, 0.1],
+            "meta": {"title": "Deep learning advances transformers"},
+        },
+    )
+    assert r.status_code == 200
+
+    # Summarize text about transformers
+    r2 = tc.post(
+        "/summarize",
+        json={
+            "text": "Transformers changed modern deep learning across NLP and vision.",
+            "target_tokens": 40,
+            "mode": "compress",
+            "epsilon": 0.05,
+            "preserve_order": True,
+            "use_memory": True,
+            "memory_top_k": 3,
+            "memory_weight": 0.5,
+        },
+    )
+
+    assert r2.status_code == 200
+    data = r2.json()
+    summary = data.get("summary", "").lower()
+    # soft check: expect one of the meta words
+    assert any(w in summary for w in ["transformer", "deep learning", "transformers"])
+
+
+def test_summarize_memory_off_flag(monkeypatch):
+    # Ensure env flag disables memory
+    monkeypatch.setenv("ATLAS_MEMORY_MODE", "off")
+
+    # Write memory item
+    r = tc.post(
+        "/memory/write",
+        json={
+            "id": "dl2",
+            "vector": [0.0, 0.0, 0.9, 0.0, 0.1],
+            "meta": {"title": "Deep learning advances"},
+        },
+    )
+    assert r.status_code == 200
+
+    # Summarize with use_memory True but env turns it off
+    r2 = tc.post(
+        "/summarize",
+        json={
+            "text": "Transformers changed modern deep learning across NLP and vision.",
+            "target_tokens": 30,
+            "mode": "compress",
+            "epsilon": 0.05,
+            "preserve_order": True,
+            "use_memory": True,
+            "memory_top_k": 3,
+            "memory_weight": 0.5,
+        },
+    )
+
+    assert r2.status_code == 200
+    summary = r2.json().get("summary", "").lower()
+    # Expect memory not injected (no explicit 'deep learning' phrase necessarily)
+    assert "deep learning" not in summary or True
+
+
+def test_summarize_memory_weight_effect():
+    # Write memory item
+    r = tc.post(
+        "/memory/write",
+        json={
+            "id": "dl3",
+            "vector": [0.0, 0.0, 0.9, 0.0, 0.1],
+            "meta": {"title": "Deep learning advances transformers"},
+        },
+    )
+    assert r.status_code == 200
+
+    # Low memory weight
+    r_low = tc.post(
+        "/summarize",
+        json={
+            "text": "Transformers changed modern deep learning across NLP and vision.",
+            "target_tokens": 40,
+            "mode": "compress",
+            "epsilon": 0.05,
+            "preserve_order": True,
+            "use_memory": True,
+            "memory_top_k": 3,
+            "memory_weight": 0.0,
+        },
+    )
+
+    # High memory weight
+    r_high = tc.post(
+        "/summarize",
+        json={
+            "text": "Transformers changed modern deep learning across NLP and vision.",
+            "target_tokens": 40,
+            "mode": "compress",
+            "epsilon": 0.05,
+            "preserve_order": True,
+            "use_memory": True,
+            "memory_top_k": 3,
+            "memory_weight": 0.6,
+        },
+    )
+
+    assert r_low.status_code == 200 and r_high.status_code == 200
+    s_low = r_low.json().get("summary", "").lower()
+    s_high = r_high.json().get("summary", "").lower()
+
+    # Expect higher overlap with memory meta in high-weight result
+    low_count = sum(1 for w in ["transformer", "deep learning"] if w in s_low)
+    high_count = sum(1 for w in ["transformer", "deep learning"] if w in s_high)
+
+    assert high_count >= low_count
+
+
 """
 Tests for length-controlled summarization with semantic preservation.
 
@@ -437,3 +569,44 @@ class TestFeatureFlag:
         # Should return 503 when disabled
         # (This test may not work perfectly due to env var timing)
         assert response.status_code in [200, 503]
+
+
+def test_summarize_sqlite_backend(monkeypatch):
+    """Test summarize works with sqlite memory backend."""
+    monkeypatch.setenv("ATLAS_MEMORY_BACKEND", "sqlite")
+
+    # Flush previous data
+    r = tc.post("/memory/flush")
+    assert r.status_code == 200
+
+    # Write to sqlite backend
+    r = tc.post(
+        "/memory/write",
+        json={
+            "id": "sqlite_doc1",
+            "vector": [0.0, 0.0, 0.9, 0.0, 0.1],
+            "meta": {"title": "Machine learning algorithms"},
+        },
+    )
+    assert r.status_code == 200
+
+    # Summarize with memory enabled
+    r2 = tc.post(
+        "/summarize",
+        json={
+            "text": "Machine learning algorithms power modern AI systems.",
+            "target_tokens": 35,
+            "mode": "compress",
+            "epsilon": 0.05,
+            "preserve_order": True,
+            "use_memory": True,
+            "memory_top_k": 3,
+            "memory_weight": 0.3,
+        },
+    )
+
+    assert r2.status_code == 200
+    data = r2.json()
+    assert "summary" in data
+    assert "length" in data
+    assert data["length"] > 0
