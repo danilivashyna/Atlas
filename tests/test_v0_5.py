@@ -20,6 +20,7 @@ def node_store():
     ns = get_node_store()
     ns.flush_nodes()
     ns.flush_links()
+    ns.flush_link_versions()
 
     # Seed test nodes
     ns.write_node("dim2", None, [0.6, 0.1, 0.2, 0.0, 0.1], label="animals", weight=0.7)
@@ -31,6 +32,7 @@ def node_store():
     # Cleanup
     ns.flush_nodes()
     ns.flush_links()
+    ns.flush_link_versions()
 
 
 @pytest.fixture
@@ -48,29 +50,28 @@ def client():
 
 def test_ann_inproc_build_and_query(node_store):
     """Test inproc ANN index build and query."""
-    from atlas.router.ann_index import InprocessANN
+    from atlas.router.ann_index import InprocANN
 
-    ann = InprocessANN()
+    ann = InprocANN()
     nodes = node_store.get_all_nodes()
 
     # Build
-    ann.build(nodes)
-    assert ann.index_size == 3
-    assert ann.backend_name == "inproc"
+    ann.rebuild([(n["path"], n["vec5"]) for n in nodes])
+    assert ann.size() == 3
 
     # Query
     query_vec = [0.6, 0.1, 0.2, 0.0, 0.1]  # Same as dim2
-    results = ann.query(query_vec, top_k=2)
+    results = ann.search(query_vec, top_k=2)
     assert len(results) == 2
-    assert results[0].path == "dim2"  # Exact match
+    assert results[0][0] == "dim2"  # Exact match
 
 
 def test_ann_faiss_backend_graceful_fallback():
     """Test FAISS backend (gracefully skipped if not installed)."""
-    from atlas.router.ann_index import FAISSANNIndex
+    from atlas.router.ann_index import FAISSANN
 
-    ann = FAISSANNIndex()
-    assert ann.backend_name == "faiss"
+    with pytest.raises(RuntimeError):
+        FAISSANN()
     # Should gracefully handle missing faiss
 
 
@@ -118,7 +119,7 @@ def test_path_router_with_ann(node_store):
     space = SemanticSpace()
     ann = get_ann_index("inproc")
     nodes = node_store.get_all_nodes()
-    ann.build(nodes)
+    ann.rebuild([(n["path"], n["vec5"]) for n in nodes])
 
     router = PathRouter(space, node_store, ann_index=ann)
     scores = router.route("kittens", top_k=3, use_ann=True)
@@ -151,17 +152,17 @@ def test_router_batch_basic(client, node_store):
 def test_index_rebuild_idempotent(client, node_store):
     """Test index rebuild is idempotent."""
     # First rebuild
-    response1 = client.post("/router/index/rebuild", json={"backend": "inproc"})
+    response1 = client.post("/router/index/update", json={"action": "sync", "backend": "inproc"})
     assert response1.status_code == 200
     data1 = response1.json()
     assert data1["ok"] is True
-    count1 = data1["count"]
+    count1 = data1["size"]
 
     # Second rebuild (should be same)
-    response2 = client.post("/router/index/rebuild", json={"backend": "inproc"})
+    response2 = client.post("/router/index/update", json={"action": "sync", "backend": "inproc"})
     assert response2.status_code == 200
     data2 = response2.json()
-    assert data2["count"] == count1
+    assert data2["size"] == count1
 
 
 # ===== Reticulum Tests =====
@@ -171,10 +172,11 @@ def test_link_write_query(client, node_store):
     """Test link write and query."""
     # Write link
     response1 = client.post(
-        "/reticulum/link",
+        "/reticulum/link_version",
         json={
             "path": "dim2/dim2.4",
             "content_id": "doc:cats101",
+            "version": 1,
             "kind": "doc",
             "score": 0.92,
             "meta": {"title": "Cats 101"},
@@ -184,7 +186,7 @@ def test_link_write_query(client, node_store):
     assert response1.json()["ok"] is True
 
     # Query link
-    response2 = client.post("/reticulum/query", json={"path": "dim2/dim2.4", "top_k": 5})
+    response2 = client.post("/reticulum/recent", json={"path": "dim2/dim2.4", "top_k": 5})
     assert response2.status_code == 200
     data = response2.json()
     assert len(data["items"]) == 1
@@ -195,32 +197,35 @@ def test_query_subtree(client, node_store):
     """Test subtree query in reticulum."""
     # Write multiple links under dim2
     client.post(
-        "/reticulum/link",
+        "/reticulum/link_version",
         json={
             "path": "dim2",
             "content_id": "doc:animals",
+            "version": 1,
             "score": 0.8,
         },
     )
     client.post(
-        "/reticulum/link",
+        "/reticulum/link_version",
         json={
             "path": "dim2/dim2.4",
             "content_id": "doc:cats",
+            "version": 1,
             "score": 0.9,
         },
     )
     client.post(
-        "/reticulum/link",
+        "/reticulum/link_version",
         json={
             "path": "dim2/dim2.5",
             "content_id": "doc:dogs",
+            "version": 1,
             "score": 0.85,
         },
     )
 
     # Query subtree with prefix
-    response = client.post("/reticulum/query", json={"path": "dim2", "top_k": 10})
+    response = client.post("/reticulum/recent", json={"path": "dim2", "top_k": 10})
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) >= 2  # Should get dim2 and children
@@ -228,7 +233,7 @@ def test_query_subtree(client, node_store):
 
 def test_missing_path_grace(client):
     """Test graceful handling of missing paths."""
-    response = client.post("/reticulum/query", json={"path": "nonexistent", "top_k": 5})
+    response = client.post("/reticulum/recent", json={"path": "nonexistent", "top_k": 5})
     assert response.status_code == 200
     data = response.json()
     assert data["items"] == []
@@ -266,9 +271,9 @@ def test_openapi_has_v0_5_endpoints(client):
 
     paths = schema["paths"].keys()
     assert "/router/route_batch" in paths
-    assert "/router/index/rebuild" in paths
-    assert "/reticulum/link" in paths
-    assert "/reticulum/query" in paths
+    assert "/router/index/update" in paths
+    assert "/reticulum/link_version" in paths
+    assert "/reticulum/recent" in paths
 
 
 def test_root_endpoint_includes_v0_5(client):

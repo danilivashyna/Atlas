@@ -1,116 +1,71 @@
-"""
-Mensum v0 metrics for Atlas v0.5+.
+from __future__ import annotations
 
-Tracks router, reticulum, and node statistics.
-"""
-
+import os
+import threading
 import time
-from collections import defaultdict
-from typing import Any, Dict
+from typing import Dict, Tuple
 
 
-class Metrics:
-    """Thread-safe metrics collector for v0.5+."""
+class MensumMetrics:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.counters: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = {}
+        self.gauges: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = {}
+        self.hist: Dict[str, list] = []
 
-    def __init__(self):
-        # Router metrics
-        self.router_requests_total = 0
-        self.router_batch_requests_total = 0
-        self.router_latency_ms = defaultdict(list)  # endpoint -> [latencies]
-        self.router_ann_backend = "off"
-        self.router_hit_rate_ann = 0.0  # hit_count / total
-        self.router_softmax_entropy = 0.0
+    def _labels_tuple(self, **labels):
+        return tuple(sorted(labels.items()))
 
-        # Reticulum metrics
-        self.reticulum_links_total = 0
-        self.reticulum_query_latency_ms = []
+    def inc_counter(self, name: str, value: float = 1.0, **labels):
+        with self._lock:
+            key = (name, self._labels_tuple(**labels))
+            self.counters[key] = self.counters.get(key, 0.0) + value
 
-        # Node metrics
-        self.nodes_index_size = 0
-        self.nodes_count = 0
+    def set_gauge(self, name: str, value: float, **labels):
+        with self._lock:
+            key = (name, self._labels_tuple(**labels))
+            self.gauges[key] = value
 
-    def inc_router_request(self, endpoint: str = "route"):
-        """Increment router request counter."""
-        self.router_requests_total += 1
+    def add_gauge(self, name: str, delta: float, **labels):
+        with self._lock:
+            key = (name, self._labels_tuple(**labels))
+            self.gauges[key] = self.gauges.get(key, 0.0) + delta
 
-    def inc_router_batch_request(self):
-        """Increment batch router request counter."""
-        self.router_batch_requests_total += 1
-
-    def record_router_latency(self, endpoint: str, latency_ms: float):
-        """Record router endpoint latency."""
-        self.router_latency_ms[endpoint].append(latency_ms)
-
-    def set_ann_backend(self, backend: str):
-        """Set active ANN backend."""
-        self.router_ann_backend = backend
-
-    def set_ann_hit_rate(self, hit_count: int, total: int):
-        """Set ANN hit rate (fraction of top-1 matches)."""
-        if total > 0:
-            self.router_hit_rate_ann = float(hit_count) / float(total)
-
-    def set_softmax_entropy(self, entropy: float):
-        """Set average softmax entropy from child activation."""
-        self.router_softmax_entropy = entropy
-
-    def inc_link_created(self):
-        """Increment link counter."""
-        self.reticulum_links_total += 1
-
-    def record_link_query_latency(self, latency_ms: float):
-        """Record link query latency."""
-        self.reticulum_query_latency_ms.append(latency_ms)
-
-    def set_nodes_index_size(self, size: int):
-        """Set ANN index size."""
-        self.nodes_index_size = size
-
-    def set_nodes_count(self, count: int):
-        """Set total node count."""
-        self.nodes_count = count
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Export metrics as dict."""
-        # Calculate averages
-        avg_router_latency = {}
-        for endpoint, latencies in self.router_latency_ms.items():
-            if latencies:
-                avg_router_latency[endpoint] = float(sum(latencies)) / len(latencies)
-
-        avg_link_query_latency = 0.0
-        if self.reticulum_query_latency_ms:
-            avg_link_query_latency = float(sum(self.reticulum_query_latency_ms)) / len(
-                self.reticulum_query_latency_ms
-            )
-
-        return {
-            "router": {
-                "requests_total": self.router_requests_total,
-                "batch_requests_total": self.router_batch_requests_total,
-                "avg_latency_ms": avg_router_latency,
-                "ann_backend": self.router_ann_backend,
-                "ann_hit_rate": self.router_hit_rate_ann,
-                "softmax_entropy": self.router_softmax_entropy,
-            },
-            "reticulum": {
-                "links_total": self.reticulum_links_total,
-                "avg_query_latency_ms": avg_link_query_latency,
-            },
-            "nodes": {
-                "index_size": self.nodes_index_size,
-                "count": self.nodes_count,
-            },
+    def to_json(self):
+        # старый JSON эндпоинт
+        out = {
+            "counters": {f"{n}{dict(l)}": v for (n, l), v in self.counters.items()},
+            "gauges": {f"{n}{dict(l)}": v for (n, l), v in self.gauges.items()},
         }
+        return out
+
+    def to_prom(self, **base_labels) -> str:
+        # минимальный экспортер
+        lines = []
+        for (name, labels), val in self.counters.items():
+            d = dict(labels)
+            d.update(base_labels)
+            ls = ",".join([f'{k}="{v}"' for k, v in d.items()])
+            lines.append(f"# TYPE {name} counter")
+            lines.append(f"{name}{{{ls}}} {val}")
+        for (name, labels), val in self.gauges.items():
+            d = dict(labels)
+            d.update(base_labels)
+            ls = ",".join([f'{k}="{v}"' for k, v in d.items()])
+            lines.append(f"# TYPE {name} gauge")
+            lines.append(f"{name}{{{ls}}} {val}")
+        return "\n".join(lines) + "\n"
 
 
-# Global metrics instance
-_metrics_instance = None
+_metrics_singleton: MensumMetrics | None = None
 
 
-def get_metrics() -> Metrics:
-    """Get global metrics instance."""
-    global _metrics_instance
-    if _metrics_instance is None:
-        _metrics_instance = Metrics()
-    return _metrics_instance
+def metrics() -> MensumMetrics:
+    global _metrics_singleton
+    if _metrics_singleton is None:
+        _metrics_singleton = MensumMetrics()
+    return _metrics_singleton
+
+
+# удобный алиас
+metrics = metrics()

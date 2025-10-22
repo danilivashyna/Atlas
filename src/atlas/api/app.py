@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version as pkg_version
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -309,6 +309,21 @@ async def get_metrics():
         avg_latency_ms=avg_latency,
         errors_total=metrics["errors_total"],
     )
+
+
+@app.get("/metrics/prom")
+def metrics_prom():
+    from atlas.metrics.mensum import get_metrics
+
+    labels = {
+        "ann_backend": os.getenv("ATLAS_ANN_BACKEND", "inproc"),
+        "router_mode": os.getenv("ATLAS_ROUTER_MODE", "on"),
+        "memory_backend": os.getenv("ATLAS_MEMORY_BACKEND", "sqlite"),
+        "summary_mode": os.getenv("ATLAS_SUMMARY_MODE", "proportional"),
+    }
+    mensum = get_metrics()
+    text = mensum.to_prom(**labels)
+    return Response(content=text, media_type="text/plain; version=0.0.4")
 
 
 # Main API endpoints
@@ -687,10 +702,14 @@ async def root():
                 "activate": "POST /router/activate - Soft-activate children of a node",
                 "route_batch": "POST /router/route_batch - Batch routing queries (v0.5)",
                 "index_rebuild": "POST /router/index/rebuild - Rebuild ANN index (v0.5)",
+                "index_update": "POST /router/index/update - Incremental ANN updates (v0.5.1)",
             },
             "reticulum": {
                 "link": "POST /reticulum/link - Link content to a node (v0.5)",
                 "query": "POST /reticulum/query - Query linked content by path (v0.5)",
+                "link_version": "POST /reticulum/link_version - Versioned content links (v0.5.3)",
+                "resolve": "POST /reticulum/resolve - Resolve latest links by content_id (v0.5.3)",
+                "recent": "POST /reticulum/recent - Recency-weighted content queries (v0.5.3)",
             },
             "encode_h": "POST /encode_h - Encode text to hierarchical tree",
             "decode_h": "POST /decode_h - Decode tree to text with path reasoning",
