@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from atlas.router.ann_index import get_query_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +98,18 @@ class PathRouter:
             f"γ={self.gamma}, δ={self.delta}, τ={self.tau}, decay={self.decay}"
         )
 
+    def _get_vec5_with_cache(self, text: str) -> Optional[np.ndarray]:
+        """Get 5D vector for text with caching."""
+        size = int(os.getenv("ATLAS_QUERY_CACHE_SIZE", "2048"))
+        ttl = float(os.getenv("ATLAS_QUERY_CACHE_TTL", "300"))
+        cache = get_query_cache(size=size, ttl=ttl)
+
+        def _compute():
+            return self.encoder.encode(text)
+
+        vec5, _hit = cache.get_or_compute(f"q:{text}", _compute)
+        return vec5
+
     def route(self, text: str, top_k: int = 3, use_ann: bool = True) -> list[PathScore]:
         """
         Route text to top-k nodes via 5D encoding + path-aware scoring.
@@ -110,7 +124,7 @@ class PathRouter:
         """
         try:
             # Encode text to 5D
-            vec = self.encoder.encode(text)
+            vec = self._get_vec5_with_cache(text)
             if vec is None:
                 logger.warning("Encoder returned None for text: %s", text[:50])
                 return []
@@ -166,7 +180,7 @@ class PathRouter:
         """
         try:
             # Encode text
-            vec = self.encoder.encode(text)
+            vec = self._get_vec5_with_cache(text)
             if vec is None:
                 logger.warning("Encoder returned None for text: %s", text[:50])
                 return []
