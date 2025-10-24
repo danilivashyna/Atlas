@@ -539,16 +539,6 @@ class PersistentMemory:
         self.conn.commit()
         return count
 
-    def flush_link_versions(self) -> int:
-        """Delete all link_versions. Returns count deleted."""
-        self._init_link_versions()
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM link_versions")
-        count = cursor.fetchone()[0]
-        cursor.execute("DELETE FROM link_versions")
-        self.conn.commit()
-        return count
-
     def get_node(self, path: str):
         self._init_nodes_table()
         c = self.conn.cursor()
@@ -570,58 +560,32 @@ class PersistentMemory:
             "meta": json.loads(meta_json) if meta_json else None,
         }
 
-    def _init_link_versions(self):
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-          CREATE TABLE IF NOT EXISTS link_versions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            node_path TEXT NOT NULL,
-            content_id TEXT NOT NULL,
-            version INTEGER NOT NULL,
-            score REAL DEFAULT 0.0,
-            kind TEXT DEFAULT 'doc',
-            meta TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(node_path, content_id, version)
-          )"""
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_lv_node ON link_versions(node_path)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_lv_content ON link_versions(content_id)")
+    def flush_link_versions(self) -> int:
+        """Delete all link_versions and link_backrefs. Returns count deleted."""
+        self._init_reticulum_tables()
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM link_versions")
+        count = cursor.fetchone()[0]
+        cursor.execute("DELETE FROM link_versions")
+        cursor.execute("DELETE FROM link_backrefs")
         self.conn.commit()
+        return count
 
-    def write_link_version(
-        self,
-        node_path: str,
-        content_id: str,
-        version: int,
-        score: float = 0.0,
-        kind: str = "doc",
-        meta: dict | None = None,
-    ) -> None:
-        self._init_link_versions()
-        cur = self.conn.cursor()
-        cur.execute(
-            """INSERT OR REPLACE INTO link_versions
-            (node_path, content_id, version, score, kind, meta)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (node_path, content_id, version, score, kind, json.dumps(meta) if meta else None),
-        )
-        self.conn.commit()
-
-    def get_link_versions(self, content_id: str):
-        self._init_link_versions()
-        cur = self.conn.cursor()
-        cur.execute(
-            """SELECT node_path, content_id, version, score, kind, meta, created_at
-                       FROM link_versions WHERE content_id = ?
-                       ORDER BY version DESC, created_at DESC""",
+    def get_link_versions(self, content_id: str) -> List[Dict[str, Any]]:
+        """Get all versions of a content, sorted by version DESC."""
+        self._init_reticulum_tables()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """SELECT node_path, content_id, version, score, kind, meta, strftime('%s', created_at)
+               FROM link_versions WHERE content_id = ?
+               ORDER BY version DESC, created_at DESC""",
             (content_id,),
         )
-        rows = cur.fetchall()
+        rows = cursor.fetchall()
         out = []
         for r in rows:
             meta = json.loads(r[5]) if r[5] else None
+            created_at_ts = float(r[6]) if r[6] else time.time()
             out.append(
                 {
                     "node_path": r[0],
@@ -630,57 +594,31 @@ class PersistentMemory:
                     "score": r[3],
                     "kind": r[4],
                     "meta": meta,
-                    "created_at": r[6],
+                    "created_at": created_at_ts,
                 }
             )
         return out
 
-    def resolve_latest(self, content_id: str, top_k: int = 5):
-        self._init_link_versions()
-        cur = self.conn.cursor()
-        cur.execute(
-            """SELECT node_path, MAX(version) as v, strftime('%s', MAX(created_at)) as created_at_ts
-                       FROM link_versions WHERE content_id=?
-                       GROUP BY node_path ORDER BY v DESC""",
-            (content_id,),
-        )
-        rows = cur.fetchall()
-        # вернём top_k последних по version
-        out = [
-            {
-                "node_path": r[0],
-                "version": int(r[1]),
-                "created_at_ts": float(r[2]) if r[2] else time.time(),
-            }
-            for r in rows[:top_k]
-        ]
-        return out
-
-    def stats_links(self) -> Dict[str, Any]:
-        """Get statistics for links table."""
-        self._init_links_table()
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM links")
-        count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT content_id) FROM links")
-        unique_content = cursor.fetchone()[0]
-        return {"count_links": count, "count_unique_content": unique_content}
-
     def query_link_versions(
         self, path_prefix: Optional[str] = None, top_k: int = 10
     ) -> List[Dict[str, Any]]:
-        """Query link_versions, optionally filtered by path prefix for subtree search."""
-        self._init_link_versions()
+        """
+        Query link_versions, optionally filtered by path prefix.
+        Returns all versions (no decay applied). Used primarily for tests/admin queries.
+        """
+        self._init_reticulum_tables()
         cursor = self.conn.cursor()
         if path_prefix:
             like_pattern = f"{path_prefix}%"
             cursor.execute(
-                "SELECT node_path, content_id, version, score, kind, meta, strftime('%s', created_at) FROM link_versions WHERE node_path LIKE ? ORDER BY score DESC LIMIT ?",
+                """SELECT node_path, content_id, version, score, kind, meta, strftime('%s', created_at)
+                   FROM link_versions WHERE node_path LIKE ? ORDER BY score DESC LIMIT ?""",
                 (like_pattern, top_k),
             )
         else:
             cursor.execute(
-                "SELECT node_path, content_id, version, score, kind, meta, strftime('%s', created_at) FROM link_versions ORDER BY score DESC LIMIT ?",
+                """SELECT node_path, content_id, version, score, kind, meta, strftime('%s', created_at)
+                   FROM link_versions ORDER BY score DESC LIMIT ?""",
                 (top_k,),
             )
         results = []
@@ -699,6 +637,34 @@ class PersistentMemory:
                 }
             )
         return results
+
+    def resolve_latest(self, content_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Resolve latest versions of a content across all nodes.
+        Returns list of {"node_path": str, "version": int, "created_at_ts": float}.
+        """
+        self._init_reticulum_tables()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT node_path, MAX(version) AS max_version, strftime('%s', MAX(created_at))
+            FROM link_versions
+            WHERE content_id = ?
+            GROUP BY node_path
+            ORDER BY max_version DESC
+            LIMIT ?
+            """,
+            (content_id, top_k),
+        )
+        rows = cursor.fetchall()
+        return [
+            {
+                "node_path": r[0],
+                "version": int(r[1]),
+                "created_at_ts": float(r[2]) if r[2] else time.time(),
+            }
+            for r in rows
+        ]
 
     # ---- Reticulum v0.6 (Link versioning & backrefs) ----
 
