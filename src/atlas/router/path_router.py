@@ -89,6 +89,11 @@ class PathRouter:
         self.tau = tau or float(os.getenv("ATLAS_ROUTER_TAU", "0.5"))
         self.decay = decay or float(os.getenv("ATLAS_ROUTER_DECAY", "0.85"))  # NEW
 
+        # Hourglass/Beam parameters (v0.6+ stubs for future implementation)
+        self.beam = int(os.getenv("ATLAS_ROUTER_BEAM", "4"))  # beam width for hourglass search
+        self.depth = int(os.getenv("ATLAS_ROUTER_DEPTH", "3"))  # search depth
+        self.conf_threshold = float(os.getenv("ATLAS_ROUTER_CONF", "0.85"))  # confidence threshold
+
         # Verify weights; if sum>0 and !=1 → hard-normalize
         weight_sum = self.alpha + self.beta + self.gamma + self.delta
         if weight_sum > 0 and abs(weight_sum - 1.0) > 1e-6:
@@ -199,147 +204,6 @@ class PathRouter:
         except Exception as e:
             logger.error(f"route() failed: {e}")
             return []
-
-    def route_iter(
-        self,
-        text: str,
-        top_k: int = 3,
-        beam: Optional[int] = None,
-        depth: Optional[int] = None,
-        conf: Optional[float] = None,
-        use_ann: bool = True,
-    ) -> dict:
-        """
-        Iterative routing with beam search and confidence stopping.
-
-        Returns trace dict with final results, iterations, stopped_reason, conf.
-        """
-        import time
-
-        start_time = time.time()
-
-        # Params from args or env
-        beam = beam or int(os.getenv("ATLAS_ROUTER_BEAM", "5"))
-        depth = depth or int(os.getenv("ATLAS_ROUTER_DEPTH", "2"))
-        conf_thresh = conf or float(os.getenv("ATLAS_ROUTER_CONF", "0.85"))
-        k_mult = float(os.getenv("ATLAS_ROUTER_K_MULT", "3.0"))
-
-        try:
-            vec = self._get_vec5_with_cache(text)
-            if vec.size != 5:
-                return {"final": [], "iterations": [], "stopped_reason": "empty", "conf": 0.0}
-
-            K = int(top_k * k_mult)
-            if use_ann and self.ann_index:
-                ann_results = self.ann_index.search(vec, top_k=K)
-                candidate_paths = {r[0] for r in ann_results}
-                C0 = [
-                    n for n in self.node_store.get_all_nodes() if n.get("path") in candidate_paths
-                ]
-            else:
-                C0 = self.node_store.get_all_nodes()
-
-            logger.debug(f"route_iter[d=0]: {len(C0)} candidates")
-
-            S0 = [self._score_node(vec, n) for n in C0]
-            B0 = self._softmax_top([(C0[i]["path"], S0[i]) for i in range(len(C0))], beam)
-
-            iterations = [
-                {"candidates": len(C0), "beam": [{"path": p, "p": p_val} for p, p_val in B0]}
-            ]
-            current_beam = B0
-            stopped_reason = "depth"
-
-            for d in range(1, depth + 1):
-                # Gather children + optional reticulum neighbors
-                new_candidates = []
-                for path, _ in current_beam:
-                    children = self.node_store.get_children(path)
-                    new_candidates.extend(children)
-                    # Optional: add reticulum neighbors
-                    try:
-                        neighbors = self.node_store.neighbors_from_node(path, top_k=5)
-                        # For simplicity, skip reticulum for now
-                    except:
-                        pass
-
-                if not new_candidates:
-                    stopped_reason = "empty"
-                    break
-
-                # Score new candidates
-                S_new = [self._score_node(vec, n) for n in new_candidates]
-                B_new = self._softmax_top(
-                    [(new_candidates[i]["path"], S_new[i]) for i in range(len(new_candidates))],
-                    beam,
-                )
-
-                # Check confidence
-                max_p = max(p for _, p in B_new) if B_new else 0.0
-                if max_p >= conf_thresh:
-                    stopped_reason = "confidence"
-                    current_beam = B_new
-                    iterations.append(
-                        {
-                            "candidates": len(new_candidates),
-                            "beam": [{"path": p, "p": p_val} for p, p_val in B_new],
-                        }
-                    )
-                    break
-
-                current_beam = B_new
-                iterations.append(
-                    {
-                        "candidates": len(new_candidates),
-                        "beam": [{"path": p, "p": p_val} for p, p_val in B_new],
-                    }
-                )
-                logger.debug(
-                    f"route_iter[d={d}]: {len(new_candidates)} candidates → beam {len(B_new)}"
-                )
-
-            # Final: top-k from last beam
-            final_scores = []
-            for path, p in current_beam[:top_k]:
-                node = next((n for n in self.node_store.get_all_nodes() if n["path"] == path), None)
-                if node:
-                    final_scores.append(
-                        PathScore(
-                            path=path, score=p, label=node.get("label"), meta=node.get("meta")
-                        )
-                    )
-
-            latency = time.time() - start_time
-            metrics_ns().observe_hist("router_beam_confidence", max_p if current_beam else 0.0)
-            metrics_ns().observe_hist("router_beam_time_ms", latency * 1000)
-            metrics_ns().inc_counter(
-                "router_beam_iterations_total", labels={"stopped_reason": stopped_reason}
-            )
-
-            return {
-                "final": [
-                    {"path": ps.path, "score": ps.score, "label": ps.label, "meta": ps.meta}
-                    for ps in final_scores
-                ],
-                "iterations": iterations,
-                "stopped_reason": stopped_reason,
-                "conf": max_p if current_beam else 0.0,
-            }
-
-        except Exception as e:
-            logger.error(f"route_iter() failed: {e}")
-            return {"final": [], "iterations": [], "stopped_reason": "error", "conf": 0.0}
-
-    def _softmax_top(self, scored: list[tuple[str, float]], beam: int) -> list[tuple[str, float]]:
-        """Softmax top-beam from scored list."""
-        if not scored:
-            return []
-        scores = np.array([s for _, s in scored])
-        logits = scores / self.tau
-        exp_logits = np.exp(logits - np.max(logits))
-        probs = exp_logits / np.sum(exp_logits)
-        top_indices = np.argsort(probs)[-beam:][::-1]
-        return [(scored[i][0], float(probs[i])) for i in top_indices]
 
     def activate_child(self, path: str, text: str) -> list[ChildActivation]:
         """
@@ -475,108 +339,52 @@ class PathRouter:
 
         return float(min(prior, 1.0))  # Clamp to [0, 1]
 
-    def feedback(
-        self,
-        node_path: str,
-        outcome: str,
-        text: Optional[str] = None,
-        content_id: Optional[str] = None,
-        version: Optional[int] = None,
-    ) -> None:
+    def route_iter(self, query: str, top_k: int = 5) -> dict:
         """
-        Apply feedback to node and related entities.
+        Iterative hourglass-stencil routing stub (v0.6 placeholder).
+
+        Currently: 1) calls standard route(), 2) wraps result in trace structure
+        compatible with future multi-iteration logic.
+
+        Args:
+            query: Text query
+            top_k: Top-k results to return
+
+        Returns:
+            Dict with keys:
+            - 'iterations': list of iteration traces (currently 1 iteration)
+            - 'final': list of PathScore results (same as route())
         """
-        sgn = 1.0 if outcome == "positive" else -1.0
-        eps_w = 0.01  # weight epsilon
-        eps_l = 0.01  # link epsilon
-        alpha = 0.02  # EMA alpha for vec5
+        import time
 
-        # Find node
-        nodes = [n for n in self.node_store.get_all_nodes() if n["path"] == node_path]
-        if not nodes:
-            logger.warning(f"feedback: node {node_path} not found")
-            return
-        node = nodes[0]
+        start_ts = time.time()
 
-        # Update node weight
-        old_weight = node.get("weight", 0.5)
-        new_weight = max(0.0, min(1.0, old_weight + sgn * eps_w))
-        node["weight"] = round(new_weight, 4)
-        self.node_store.write_node(
-            node["path"],
-            node.get("parent"),
-            node["vec5"],
-            node.get("label"),
-            new_weight,
-            node.get("meta"),
-        )
+        # Call standard route
+        items = self.route(query, top_k=top_k) or []
 
-        # Update ancestors with decay
-        current_parent = node.get("parent")
-        decay_factor = 0.5
-        depth = 1
-        while current_parent and depth <= 5:
-            parent_nodes = [
-                n for n in self.node_store.get_all_nodes() if n["path"] == current_parent
-            ]
-            if parent_nodes:
-                pnode = parent_nodes[0]
-                p_old_weight = pnode.get("weight", 0.5)
-                p_new_weight = max(0.0, min(1.0, p_old_weight + sgn * eps_w * decay_factor))
-                pnode["weight"] = round(p_new_weight, 4)
-                self.node_store.write_node(
-                    pnode["path"],
-                    pnode.get("parent"),
-                    pnode["vec5"],
-                    pnode.get("label"),
-                    p_new_weight,
-                    pnode.get("meta"),
-                )
-                current_parent = pnode.get("parent")
-                decay_factor *= 0.5
-                depth += 1
-            else:
-                break
+        # Record metrics
+        try:
+            elapsed_ms = (time.time() - start_ts) * 1000
+            metrics_ns().inc_counter("router_route_iter_total")
+            metrics_ns().observe_histogram("router_route_iter_latency_ms", elapsed_ms)
+            metrics_ns().set_gauge(
+                "router_beam_width",
+                len(items),
+                labels={"current": "yes", "max": str(self.beam)},
+            )
+        except Exception:
+            pass
 
-        # Update link score if content_id
-        if content_id is not None:
-            # Find latest link_version
-            links = self.node_store.get_link_versions(content_id)
-            if links:
-                latest = max(links, key=lambda l: l["version"])
-                old_score = latest["score"]
-                new_score = max(0.0, min(1.0, old_score + sgn * eps_l))
-                self.node_store.write_link_version(
-                    latest["node_path"],
-                    content_id,
-                    latest["version"],
-                    new_score,
-                    latest.get("kind"),
-                    latest.get("meta"),
-                )
-
-        # Update node vec5 with EMA if text
-        if text:
-            vec = self._get_vec5_with_cache(text)
-            if vec.size == 5:
-                old_vec = np.array(node["vec5"])
-                new_vec = (1 - alpha) * old_vec + alpha * vec
-                node["vec5"] = [round(float(x), 4) for x in new_vec]
-                self.node_store.write_node(
-                    node["path"],
-                    node.get("parent"),
-                    node["vec5"],
-                    node.get("label"),
-                    node["weight"],
-                    node.get("meta"),
-                )
-
-        metrics_ns().inc_counter("feedback_total", labels={"outcome": outcome})
-        metrics_ns().inc_counter("feedback_weight_updates_total")
-        if content_id:
-            metrics_ns().inc_counter("feedback_link_updates_total")
-        if text:
-            metrics_ns().inc_counter("feedback_vec_updates_total")
+        # Wrap in trace structure for future compatibility
+        return {
+            "iterations": [
+                {
+                    "beam": [{"path": x.path, "score": x.score} for x in items],
+                    "center_conf": 1.0 if items else 0.0,
+                }
+            ],
+            "final": items,
+        }
 
     @staticmethod
     def _cosine(v1: np.ndarray, v2: np.ndarray) -> float:
