@@ -186,6 +186,17 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
+# Configure logging from environment
+import os
+
+log_level = os.getenv("ATLAS_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+logger.info(f"Atlas API initializing... (log_level={log_level})")
+
 app = FastAPI(
     title="Atlas Semantic Space API",
     description="5D semantic space interface for encoding, decoding, and explaining text",

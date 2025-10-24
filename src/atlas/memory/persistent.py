@@ -9,6 +9,7 @@ Interface matches MappaMemory for transparent backend switching.
 """
 
 import json
+import logging
 import math
 import sqlite3
 import tempfile
@@ -16,6 +17,9 @@ import time
 from math import sqrt
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+
+logger = logging.getLogger(__name__)
 
 
 def _cosine(a: List[float], b: List[float]) -> float:
@@ -740,6 +744,10 @@ class PersistentMemory:
             kind: Optional content type
             meta: Optional metadata
         """
+        logger.debug(
+            f"write_link_version: node={node_path}, content={content_id}, v={version}, score={score}, kind={kind}"
+        )
+
         self._init_reticulum_tables()
 
         cursor = self.conn.cursor()
@@ -779,6 +787,10 @@ class PersistentMemory:
         Returns:
             List of dicts with content_id, node_path, score, version, created_at_ts
         """
+        logger.debug(
+            f"recent_links: lambda={lambda_per_day}, top_k={top_k}, path_prefix={path_prefix}"
+        )
+
         self._init_reticulum_tables()
 
         cursor = self.conn.cursor()

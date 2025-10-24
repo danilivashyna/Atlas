@@ -13,6 +13,8 @@ Scoring formula (v0.5+):
 Soft child activation uses softmax with temperature τ.
 """
 
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 import logging
 import os
 from dataclasses import dataclass
@@ -160,10 +162,12 @@ class PathRouter:
             list[PathScore] sorted by score descending
         """
         try:
+            logger.debug(f"route(text_len={len(text)}, top_k={top_k}, use_ann={use_ann})")
             # Encode text to 5D
             vec = self._get_vec5_with_cache(text)
             if vec.size != 5:
                 logger.debug("route(): empty/invalid vec5 — returning []")
+                logger.info(f"route() returned 0 candidates (invalid encoding)")
                 return []
 
             # Fetch candidate nodes: use ANN if available and enabled, else full scan

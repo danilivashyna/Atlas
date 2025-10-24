@@ -6,6 +6,25 @@ Thank you for your interest in contributing to Atlas - Semantic Space Control Pa
 
 By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it before contributing.
 
+## 📜 Contributor License Agreement (CLA)
+
+**All contributions to Atlas require signing the Contributor License Agreement.**
+
+By submitting a pull request, you agree to the terms of the CLA (see [CLA.md](CLA.md)). This ensures:
+
+- Clear ownership of contributions
+- Right to relicense under commercial terms
+- Protection for all contributors and the project
+
+**To submit a PR:**
+1. Read and understand [CLA.md](CLA.md)
+2. Add this line to your PR description: "I have read and agree to the CLA"
+3. We'll verify before merging
+
+**Questions?** Contact: [danilivashyna@gmail.com](mailto:danilivashyna@gmail.com)
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
