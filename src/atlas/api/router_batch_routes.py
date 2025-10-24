@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Optional
 
@@ -10,6 +11,7 @@ from atlas.memory import get_node_store
 from atlas.metrics.mensum import metrics_ns
 from atlas.router.ann_index import get_ann_index, get_query_cache
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/router", tags=["Router"])
 
 
@@ -89,21 +91,34 @@ def index_update(req: IndexUpdateRequest):
     backend = (req.backend or os.getenv("ATLAS_ANN_BACKEND", "inproc")).lower()
     ann = get_ann_index(backend)
     store = get_node_store()
-    if req.action == "sync":
-        items = [(n["path"], n["vec5"]) for n in store.get_all_nodes()]
-        size = ann.rebuild(items)
-        metrics_ns().set_gauge("ann_index_size", size, labels={"backend": backend})
-        metrics_ns().inc_counter("ann_rebuilds", labels={"backend": backend})
-        return {"ok": True, "size": size}
-    elif req.action == "add":
-        nodes = [store.get_node(p) for p in (req.paths or []) if store.get_node(p)]
-        added = ann.add_nodes([(n["path"], n["vec5"]) for n in nodes])
-        metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
-        metrics_ns().inc_counter("ann_updates", inc=added, labels={"backend": backend})
-        return {"ok": True, "added": added}
-    elif req.action == "remove":
-        removed = ann.remove_nodes(req.paths or [])
-        metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
-        metrics_ns().inc_counter("ann_removes", inc=removed, labels={"backend": backend})
-        return {"ok": True, "removed": removed}
-    return {"ok": False}
+
+    try:
+        if req.action == "sync":
+            items = [(n["path"], n["vec5"]) for n in store.get_all_nodes()]
+            size = ann.rebuild(items)
+            metrics_ns().set_gauge("ann_index_size", size, labels={"backend": backend})
+            metrics_ns().inc_counter("ann_rebuilds", labels={"backend": backend})
+            # Record autosync metric (sync is autosync operation)
+            metrics_ns().inc_counter(
+                "ann_autosync_runs_total", labels={"backend": backend, "status": "success"}
+            )
+            return {"ok": True, "size": size}
+        elif req.action == "add":
+            nodes = [store.get_node(p) for p in (req.paths or []) if store.get_node(p)]
+            added = ann.add_nodes([(n["path"], n["vec5"]) for n in nodes])
+            metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
+            metrics_ns().inc_counter("ann_updates", inc=added, labels={"backend": backend})
+            return {"ok": True, "added": added}
+        elif req.action == "remove":
+            removed = ann.remove_nodes(req.paths or [])
+            metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
+            metrics_ns().inc_counter("ann_removes", inc=removed, labels={"backend": backend})
+            return {"ok": True, "removed": removed}
+        return {"ok": False}
+    except Exception as e:
+        # Record error metric
+        metrics_ns().inc_counter(
+            "ann_autosync_runs_total", labels={"backend": backend, "status": "error"}
+        )
+        logger.exception(f"ANN index update failed: {e}")
+        raise
