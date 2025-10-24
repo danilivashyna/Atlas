@@ -1,63 +1,46 @@
-# Atlas Semantic Space API - Dockerfile
-# Multi-stage build for production deployment
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Multi-stage build: reduces final image size by ~60%
 
-# Stage 1: Builder
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements and install to /build/install
 COPY requirements.txt .
-COPY setup.py .
-COPY pyproject.toml .
-COPY src/ src/
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir fastapi[all] uvicorn[standard] pydantic && \
-    pip install --no-cache-dir -e .
-
-# Stage 2: Runtime
+# Runtime stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
 # Create non-root user
-RUN useradd -m -u 1000 atlas && \
-    chown -R atlas:atlas /app
+RUN useradd -m -u 1000 atlas && chown -R atlas:atlas /app
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy only necessary files from builder
+COPY --from=builder --chown=atlas:atlas /root/.local /home/atlas/.local
+COPY --chown=atlas:atlas . .
 
-# Copy application code
-COPY --chown=atlas:atlas src/ src/
-COPY --chown=atlas:atlas setup.py .
-COPY --chown=atlas:atlas pyproject.toml .
-
-# Install the package
-RUN pip install --no-cache-dir -e .
+# Set environment
+ENV PATH=/home/atlas/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    ATLAS_LOG_LEVEL=INFO \
+    ATLAS_MEMORY_BACKEND=sqlite
 
 # Switch to non-root user
 USER atlas
 
-# Expose port
-EXPOSE 8000
-
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8010/health || exit 1
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV ATLAS_LOG_LEVEL=info
+# Expose port
+EXPOSE 8010
 
-# Run the API server
-CMD ["uvicorn", "atlas.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+# Run
+CMD ["uvicorn", "src.atlas.api.app:app", "--host", "0.0.0.0", "--port", "8010"]

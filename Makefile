@@ -1,59 +1,68 @@
-.PHONY: help setup install dev test lint format api api-docs bench clean
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Atlas Makefile — quick commands for development & deployment
+
+.PHONY: help venv install test lint format run docker docker-build docker-run clean
 
 help:
-	@echo "Atlas - Semantic Space Control Panel"
+	@echo "Atlas — Semantic Space Control Panel"
 	@echo ""
-	@echo "Commands:"
-	@echo "  make setup          - Setup virtual environment"
-	@echo "  make install        - Install dependencies"
-	@echo "  make dev            - Install with dev dependencies"
-	@echo "  make test           - Run tests (pytest)"
-	@echo "  make lint           - Run linters (ruff, mypy)"
-	@echo "  make format         - Format code (black)"
-	@echo "  make api            - Start dev API server"
-	@echo "  make api-docs       - Open API docs (after 'make api')"
-	@echo "  make bench          - Run benchmarks"
-	@echo "  make clean          - Clean build artifacts"
+	@echo "Available targets:"
+	@echo "  make venv          Create Python virtual environment"
+	@echo "  make install       Install dependencies (dev + main)"
+	@echo "  make test          Run pytest suite (tests/)"
+	@echo "  make lint          Run ruff + black check"
+	@echo "  make format        Format code with black + isort"
+	@echo "  make run           Run API server (uvicorn :8010)"
+	@echo "  make docker        Build Docker image"
+	@echo "  make docker-run    Run Docker container (:8010)"
+	@echo "  make clean         Remove cache, venv, __pycache__"
 	@echo ""
 
-setup:
-	python3 -m venv .venv
-	. .venv/bin/activate && pip install -U pip wheel
-	@echo "✓ Virtual environment created. Activate with: source .venv/bin/activate"
+venv:
+	python3 -m venv venv
+	@echo "✅ Virtual environment created. Activate with: source venv/bin/activate"
 
-install:
-	pip install -U pip wheel
-	pip install -r requirements.txt
-	pip install -e .
-
-dev: install
-	pip install pytest pytest-cov black ruff mypy
+install: venv
+	./venv/bin/pip install -e .[dev]
+	@echo "✅ Dependencies installed"
 
 test:
 	pytest tests/ -v --tb=short
-
-test-cov:
-	pytest tests/ -v --cov=src/atlas --cov-report=term-missing
+	@echo "✅ Tests completed"
 
 lint:
 	ruff check src/ tests/
-	mypy src/atlas || true
+	black --check src/ tests/
+	@echo "✅ Linting passed"
 
 format:
-	black src/ tests/ examples/ --line-length=88
+	black src/ tests/
+	isort src/ tests/
+	@echo "✅ Code formatted"
 
-api:
-	uvicorn src.atlas.api.app:app --reload --host 0.0.0.0 --port 8000
+run:
+	@echo "Starting Atlas API on http://localhost:8010"
+	@echo "Press Ctrl+C to stop"
+	ATLAS_LOG_LEVEL=DEBUG uvicorn src.atlas.api.app:app --reload --port 8010
 
-api-docs:
-	open http://localhost:8000/docs
+docker:
+	docker build -t atlas:latest .
+	@echo "✅ Docker image built: atlas:latest"
 
-bench:
-	python scripts/benchmark_hierarchical.py
+docker-run:
+	@echo "Running Atlas in Docker on http://localhost:8010"
+	docker run -p 8010:8010 \
+	  -e ATLAS_LOG_LEVEL=INFO \
+	  -e ATLAS_MEMORY_BACKEND=sqlite \
+	  --name atlas-api \
+	  atlas:latest
+	@echo "✅ Container started. Use 'docker stop atlas-api' to stop"
 
 clean:
-	rm -rf build/ dist/ *.egg-info
+	rm -rf build/ dist/ .eggs/ *.egg-info/
+	rm -rf .pytest_cache/ .ruff_cache/ .mypy_cache/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+	@echo "✅ Cache cleaned"
 
 .DEFAULT_GOAL := help
