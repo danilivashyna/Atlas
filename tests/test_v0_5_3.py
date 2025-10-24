@@ -58,7 +58,7 @@ def test_resolve_latest_links(node_store):
     assert len(latest) == 2  # Two nodes
 
     # Should have latest versions
-    paths = {item["path"] for item in latest}
+    paths = {item["node_path"] for item in latest}
     assert "dim1" in paths
     assert "dim2" in paths
 

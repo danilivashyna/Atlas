@@ -7,7 +7,20 @@ import os
 import pytest
 
 from atlas.memory import get_node_store
-from atlas.router.ann_index import TTLCacheLRU, get_ann_index, get_query_cache
+from atlas.router.ann_index import (
+    TTLCacheLRU,
+    get_ann_index,
+    get_query_cache,
+    _reset_ann_singletons,
+)
+
+
+@pytest.fixture(autouse=True)
+def reset_singletons():
+    """Reset ANN/cache singletons before each test."""
+    _reset_ann_singletons()
+    yield
+    _reset_ann_singletons()
 
 
 @pytest.fixture

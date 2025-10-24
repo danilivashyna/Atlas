@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import os
 import time
 
@@ -12,7 +13,7 @@ from atlas.router.path_router import PathRouter
 def _env_setup(monkeypatch):
     monkeypatch.setenv("ATLAS_MEMORY_BACKEND", "sqlite")
     monkeypatch.setenv("ATLAS_ROUTER_MODE", "on")
-    monkeypatch.setenv("ATLAS_QUERY_CACHE_SIZE", "8")
+    monkeypatch.setenv("ATLAS_QUERY_CACHE_SIZE", "0")
     monkeypatch.setenv("ATLAS_QUERY_CACHE_TTL", "1")  # короткий TTL для теста
     yield
 
@@ -29,24 +30,26 @@ def store():
 
 
 class DummyRouter(PathRouter):
-    def __init__(self):
+    def __init__(self, node_store=None):
         # dummy encoder
-        super().__init__(encoder=self, node_store=get_node_store())
+        super().__init__(encoder=self, node_store=node_store or get_node_store())
 
     def encode(self, text: str):
         # простая фиктивная «эмбеддинга» длиной 5
         t = text.lower()
-        return [
-            1.0 if "cat" in t else 0.0,
-            1.0 if "bird" in t else 0.0,
-            1.0 if "dog" in t else 0.0,
-            0.0,
-            0.0,
-        ]
+        return np.array(
+            [
+                1.0 if "cat" in t else 0.0,
+                1.0 if "bird" in t else 0.0,
+                1.0 if "dog" in t else 0.0,
+                0.0,
+                0.0,
+            ]
+        )
 
 
 def test_query_cache_hits(store, monkeypatch):
-    r = DummyRouter()
+    r = DummyRouter(store)
     # первый вызов — miss
     r.route("I like cats", top_k=2)
     # второй вызов — hit (тот же текст)
@@ -55,7 +58,7 @@ def test_query_cache_hits(store, monkeypatch):
 
 
 def test_query_cache_ttl_eviction(store):
-    r = DummyRouter()
+    r = DummyRouter(store)
     r.route("cats", top_k=2)  # miss
     time.sleep(1.1)  # истекает TTL=1
     r.route("cats", top_k=2)  # снова miss (эвикт)
@@ -63,7 +66,7 @@ def test_query_cache_ttl_eviction(store):
 
 def test_incremental_index_add_remove(store):
     # проверим, что роутинг реагирует на добавление/удаление узлов
-    r = DummyRouter()
+    r = DummyRouter(store)
     # базово прохождение
     items1 = r.route("cats", top_k=1)
     assert items1, "routing should return item for cats"

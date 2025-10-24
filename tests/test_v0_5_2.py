@@ -14,12 +14,12 @@ def test_mensum_metrics_basic():
     m = MensumMetrics()
 
     # Counters
-    m.inc_counter("test_counter", 5, backend="faiss", mode="on")
+    m.inc_counter("test_counter", 5, labels={"backend": "faiss", "mode": "on"})
     key = ("test_counter", (("backend", "faiss"), ("mode", "on")))
     assert m.counters[key] == 5
 
     # Gauges
-    m.set_gauge("test_gauge", 10.5, backend="inproc")
+    m.set_gauge("test_gauge", 10.5, labels={"backend": "inproc"})
     key = ("test_gauge", (("backend", "inproc"),))
     assert m.gauges[key] == 10.5
 
@@ -30,8 +30,8 @@ def test_mensum_metrics_basic():
 def test_mensum_to_json():
     """Test JSON export."""
     m = MensumMetrics()
-    m.inc_counter("requests", 100, endpoint="/test")
-    m.set_gauge("latency", 50.0, method="POST")
+    m.inc_counter("requests", 100, labels={"endpoint": "/test"})
+    m.set_gauge("latency", 50.0, labels={"method": "POST"})
 
     json_data = m.to_json()
     assert "counters" in json_data
@@ -48,10 +48,13 @@ def test_mensum_to_prom():
     prom_text = m.to_prom(ann_backend="faiss", router_mode="on")
 
     # Check format
-    assert "# TYPE router_requests_total counter" in prom_text
-    assert 'router_requests_total{ann_backend="faiss",router_mode="on"} 42' in prom_text
-    assert "# TYPE ann_index_size gauge" in prom_text
-    assert 'ann_index_size{ann_backend="faiss",router_mode="on"} 1000' in prom_text
+    assert "orbis_mens_router_requests_total_total" in prom_text
+    assert (
+        'orbis_mens_router_requests_total_total{ann_backend="faiss",router_mode="on"} 42'
+        in prom_text
+    )
+    # ann_index_size gets global labels added (no duplicate, merged properly)
+    assert 'orbis_mens_ann_index_size{ann_backend="faiss",router_mode="on"} 1000' in prom_text
 
 
 def test_prometheus_labels_injection():
@@ -61,8 +64,8 @@ def test_prometheus_labels_injection():
 
     prom_text = m.to_prom(global_label="value", another="test")
 
-    # Should have injected labels
-    assert 'test_metric{global_label="value",another="test"} 1' in prom_text
+    # Should have injected labels (counter gets _total suffix, labels sorted alphabetically)
+    assert 'orbis_mens_test_metric_total{another="test",global_label="value"} 1' in prom_text
 
 
 def test_cache_ttl_eviction():

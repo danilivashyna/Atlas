@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -16,13 +17,18 @@ except Exception:
 # ---- Simple TTL+LRU cache (v0.5.2) ----
 class TTLCacheLRU:
     def __init__(self, capacity: int = 2048, ttl: float = 300.0) -> None:
-        self.capacity = capacity
-        self.ttl = ttl
+        # clamp и явный no-op режим для 0/отрицательных
+        self.capacity = max(0, int(capacity))
+        self.ttl = float(ttl)
         self._store: Dict[str, Tuple[float, object]] = {}
         self._order: List[str] = []
         self._lock = threading.Lock()
+        self.hits = 0
+        self.misses = 0
 
     def get(self, key: str):
+        if self.capacity == 0:
+            return None
         now = time.time()
         with self._lock:
             item = self._store.get(key)
@@ -45,6 +51,8 @@ class TTLCacheLRU:
             return val
 
     def set(self, key: str, val) -> None:
+        if self.capacity == 0:
+            return
         now = time.time()
         with self._lock:
             if key in self._store:
@@ -55,7 +63,10 @@ class TTLCacheLRU:
                     pass
                 self._order.append(key)
                 return
-            if len(self._order) >= self.capacity:
+            # безопасная эвикция
+            while self.capacity > 0 and len(self._order) >= self.capacity:
+                if not self._order:
+                    break
                 evict = self._order.pop(0)
                 self._store.pop(evict, None)
             self._store[key] = (now, val)
@@ -73,8 +84,22 @@ class QueryEmbedCache:
         v = self.cache.get(key)
         if v is not None:
             self.hits += 1
+            from atlas.metrics.mensum import metrics_ns
+
+            backend = os.getenv("ATLAS_ANN_BACKEND", "inproc")
+            autosync = os.getenv("ATLAS_ANN_AUTOSYNC", "on")
+            metrics_ns().inc_counter(
+                "query_cache_hits", labels={"backend": backend, "autosync": autosync}
+            )
             return v, True
         self.misses += 1
+        from atlas.metrics.mensum import metrics_ns
+
+        backend = os.getenv("ATLAS_ANN_BACKEND", "inproc")
+        autosync = os.getenv("ATLAS_ANN_AUTOSYNC", "on")
+        metrics_ns().inc_counter(
+            "query_cache_misses", labels={"backend": backend, "autosync": autosync}
+        )
         v = fn()
         self.cache.set(key, v)
         return v, False
@@ -119,6 +144,9 @@ class InprocANN(NodeANN):
                 self._data.pop(p, None)
                 cnt += 1
         return cnt
+
+    def get_size(self) -> int:
+        return len(self._data)
 
     def _cos(self, a: List[float], b: List[float]) -> float:
         num = sum(x * y for x, y in zip(a, b))
@@ -205,13 +233,15 @@ _QUERY_CACHE: Optional[QueryEmbedCache] = None
 
 
 def get_ann_index(backend: str = "inproc") -> Optional[NodeANN]:
+    # backend="off" never caches; always returns None
+    if backend == "off":
+        return None
+
     global _ANN_INSTANCE
     if _ANN_INSTANCE is not None:
         return _ANN_INSTANCE
     if backend == "faiss":
         _ANN_INSTANCE = FAISSANN(dim=5)
-    elif backend == "off":
-        return None
     else:
         _ANN_INSTANCE = InprocANN()  # inproc or safe-off
     return _ANN_INSTANCE
@@ -221,4 +251,18 @@ def get_query_cache(size: int = 2048, ttl: float = 300.0) -> QueryEmbedCache:
     global _QUERY_CACHE
     if _QUERY_CACHE is None:
         _QUERY_CACHE = QueryEmbedCache(size=size, ttl=ttl)
+    from atlas.metrics.mensum import metrics_ns
+
+    # фиксируем конфиг кэша на экспорте — удобно видеть текущие значения
+    try:
+        metrics_ns().observe_hist("query_cache_ttl_seconds", float(ttl), labels={"size": str(size)})
+    except Exception:
+        pass
     return _QUERY_CACHE
+
+
+def _reset_ann_singletons() -> None:
+    """Reset ANN and cache singletons (for testing only)."""
+    global _ANN_INSTANCE, _QUERY_CACHE
+    _ANN_INSTANCE = None
+    _QUERY_CACHE = None

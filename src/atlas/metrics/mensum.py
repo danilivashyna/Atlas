@@ -3,58 +3,117 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections import defaultdict
 from typing import Dict, Tuple
 
 
 class MensumMetrics:
-    def __init__(self) -> None:
+    def __init__(self, ns: str = "orbis_mens") -> None:
+        self.ns = ns
         self._lock = threading.Lock()
-        self.counters: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = {}
-        self.gauges: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = {}
-        self.hist: Dict[str, list] = []
+        self._counters = defaultdict(float)  # (name, labels_tuple) -> value
+        self._gauges = defaultdict(float)  # (name, labels_tuple) -> value
+        self._hist = defaultdict(list)  # (name, labels_tuple) -> [values]
 
-    def _labels_tuple(self, **labels):
+    @property
+    def counters(self):
+        return self._counters
+
+    @property
+    def gauges(self):
+        return self._gauges
+
+    def _lab(self, labels: dict | None) -> tuple:
+        if not labels:
+            return ()
         return tuple(sorted(labels.items()))
 
-    def inc_counter(self, name: str, value: float = 1.0, **labels):
+    def inc_counter(self, name: str, inc: float = 1.0, labels: dict | None = None, **kwargs):
+        if labels is None:
+            labels = {}
+        else:
+            labels = dict(labels)  # Make a copy to avoid mutation
+        labels.update(kwargs)
         with self._lock:
-            key = (name, self._labels_tuple(**labels))
-            self.counters[key] = self.counters.get(key, 0.0) + value
+            self._counters[(name, self._lab(labels))] += inc
 
-    def set_gauge(self, name: str, value: float, **labels):
+    def set_gauge(self, name: str, value: float, labels: dict | None = None, **kwargs):
+        if labels is None:
+            labels = {}
+        else:
+            labels = dict(labels)  # Make a copy
+        labels.update(kwargs)
         with self._lock:
-            key = (name, self._labels_tuple(**labels))
-            self.gauges[key] = value
+            self._gauges[(name, self._lab(labels))] = value
+
+    def observe_hist(self, name: str, value: float, labels: dict | None = None, **kwargs):
+        if labels is None:
+            labels = {}
+        else:
+            labels = dict(labels)  # Make a copy
+        labels.update(kwargs)
+        with self._lock:
+            self._hist[(name, self._lab(labels))].append(value)
+
+    def to_prom(self, **global_labels) -> str:
+        global_lab = tuple(sorted(global_labels.items())) if global_labels else ()
+        # text exposition format
+        lines: list[str] = []
+        # counters
+        for (name, lab), val in self._counters.items():
+            # Merge labels: convert tuple back to dict, add global labels, then back to sorted tuple (avoiding dups)
+            labels_dict = dict(lab)
+            labels_dict.update(global_labels)
+            lab_combined = tuple(sorted(labels_dict.items()))
+            lab_s = (
+                ""
+                if not lab_combined
+                else "{" + ",".join(f'{k}="{v}"' for k, v in lab_combined) + "}"
+            )
+            lines.append(f"{self.ns}_{name}_total{lab_s} {val:.0f}")
+        # gauges
+        for (name, lab), val in self._gauges.items():
+            labels_dict = dict(lab)
+            labels_dict.update(global_labels)
+            lab_combined = tuple(sorted(labels_dict.items()))
+            lab_s = (
+                ""
+                if not lab_combined
+                else "{" + ",".join(f'{k}="{v}"' for k, v in lab_combined) + "}"
+            )
+            lines.append(f"{self.ns}_{name}{lab_s} {val}")
+        # simple histogram export as _sum/_count (без бакетов, достаточно для v0.5.x)
+        for (name, lab), arr in self._hist.items():
+            if not arr:
+                continue
+            labels_dict = dict(lab)
+            labels_dict.update(global_labels)
+            lab_combined = tuple(sorted(labels_dict.items()))
+            lab_s = (
+                ""
+                if not lab_combined
+                else "{" + ",".join(f'{k}="{v}"' for k, v in lab_combined) + "}"
+            )
+            lines.append(f"{self.ns}_{name}_count{lab_s} {len(arr)}")
+            lines.append(f"{self.ns}_{name}_sum{lab_s} {sum(arr)}")
+        return "\n".join(lines) + "\n"
+
+    # legacy methods for compatibility
+    def _labels_tuple(self, **labels):
+        return tuple(sorted(labels.items()))
 
     def add_gauge(self, name: str, delta: float, **labels):
         with self._lock:
             key = (name, self._labels_tuple(**labels))
-            self.gauges[key] = self.gauges.get(key, 0.0) + delta
+            self._gauges[key] = self._gauges.get(key, 0.0) + delta
 
     def to_json(self):
         # старый JSON эндпоинт
         out = {
-            "counters": {f"{n}{dict(l)}": v for (n, l), v in self.counters.items()},
-            "gauges": {f"{n}{dict(l)}": v for (n, l), v in self.gauges.items()},
+            "counters": {f"{n}{dict(l)}": v for (n, l), v in self._counters.items()},
+            "gauges": {f"{n}{dict(l)}": v for (n, l), v in self._gauges.items()},
         }
         return out
-
-    def to_prom(self, **base_labels) -> str:
-        # минимальный экспортер
-        lines = []
-        for (name, labels), val in self.counters.items():
-            d = dict(labels)
-            d.update(base_labels)
-            ls = ",".join([f'{k}="{v}"' for k, v in d.items()])
-            lines.append(f"# TYPE {name} counter")
-            lines.append(f"{name}{{{ls}}} {val}")
-        for (name, labels), val in self.gauges.items():
-            d = dict(labels)
-            d.update(base_labels)
-            ls = ",".join([f'{k}="{v}"' for k, v in d.items()])
-            lines.append(f"# TYPE {name} gauge")
-            lines.append(f"{name}{{{ls}}} {val}")
-        return "\n".join(lines) + "\n"
 
 
 _metrics_singleton: MensumMetrics | None = None
@@ -67,5 +126,8 @@ def metrics() -> MensumMetrics:
     return _metrics_singleton
 
 
+def metrics_ns() -> MensumMetrics:
+    return metrics()
+
+
 # удобный алиас
-metrics = metrics()

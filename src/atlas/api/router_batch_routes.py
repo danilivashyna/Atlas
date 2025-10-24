@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from atlas.memory import get_node_store
-from atlas.metrics.mensum import metrics
+from atlas.metrics.mensum import metrics_ns
 from atlas.router.ann_index import get_ann_index, get_query_cache
 
 router = APIRouter(prefix="/router", tags=["Router"])
@@ -56,9 +56,9 @@ def route_batch(req: BatchRouteRequest):
 
         vec5, hit = cache.get_or_compute(f"q:{item.text}", _compute)
         if hit:
-            metrics.inc_counter("router.qcache_hits")
+            metrics_ns().inc_counter("router_qcache_hits")
         else:
-            metrics.inc_counter("router.qcache_misses")
+            metrics_ns().inc_counter("router_qcache_misses")
 
         if item.use_ann:
             candidates = ann.search(vec5, item.top_k)
@@ -85,24 +85,25 @@ def route_batch(req: BatchRouteRequest):
 
 @router.post("/index/update")
 def index_update(req: IndexUpdateRequest):
+
     backend = (req.backend or os.getenv("ATLAS_ANN_BACKEND", "inproc")).lower()
     ann = get_ann_index(backend)
     store = get_node_store()
     if req.action == "sync":
         items = [(n["path"], n["vec5"]) for n in store.get_all_nodes()]
         size = ann.rebuild(items)
-        metrics.set_gauge("ann.index_size", size)
-        metrics.inc_counter("ann.rebuilds_total")
+        metrics_ns().set_gauge("ann_index_size", size, labels={"backend": backend})
+        metrics_ns().inc_counter("ann_rebuilds", labels={"backend": backend})
         return {"ok": True, "size": size}
     elif req.action == "add":
         nodes = [store.get_node(p) for p in (req.paths or []) if store.get_node(p)]
         added = ann.add_nodes([(n["path"], n["vec5"]) for n in nodes])
-        metrics.add_gauge("ann.index_size", added)
-        metrics.inc_counter("ann.updates_total", added)
+        metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
+        metrics_ns().inc_counter("ann_updates", inc=added, labels={"backend": backend})
         return {"ok": True, "added": added}
     elif req.action == "remove":
         removed = ann.remove_nodes(req.paths or [])
-        metrics.add_gauge("ann.index_size", -removed)
-        metrics.inc_counter("ann.removes_total", removed)
+        metrics_ns().set_gauge("ann_index_size", ann.get_size(), labels={"backend": backend})
+        metrics_ns().inc_counter("ann_removes", inc=removed, labels={"backend": backend})
         return {"ok": True, "removed": removed}
     return {"ok": False}

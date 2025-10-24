@@ -9,6 +9,7 @@ Interface matches MappaMemory for transparent backend switching.
 """
 
 import json
+import math
 import sqlite3
 import tempfile
 import time
@@ -638,14 +639,21 @@ class PersistentMemory:
         self._init_link_versions()
         cur = self.conn.cursor()
         cur.execute(
-            """SELECT node_path, MAX(version) as v
+            """SELECT node_path, MAX(version) as v, strftime('%s', MAX(created_at)) as created_at_ts
                        FROM link_versions WHERE content_id=?
                        GROUP BY node_path ORDER BY v DESC""",
             (content_id,),
         )
         rows = cur.fetchall()
         # вернём top_k последних по version
-        out = [{"path": r[0], "version": int(r[1])} for r in rows[:top_k]]
+        out = [
+            {
+                "node_path": r[0],
+                "version": int(r[1]),
+                "created_at_ts": float(r[2]) if r[2] else time.time(),
+            }
+            for r in rows[:top_k]
+        ]
         return out
 
     def stats_links(self) -> Dict[str, Any]:
@@ -691,3 +699,302 @@ class PersistentMemory:
                 }
             )
         return results
+
+    # ---- Reticulum v0.6 (Link versioning & backrefs) ----
+
+    def _init_reticulum_tables(self) -> None:
+        """Initialize reticulum tables (link_versions, link_backrefs)."""
+        if self.conn is None:
+            self._init_db()
+
+        cursor = self.conn.cursor()
+
+        # link_versions table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS link_versions (
+              node_path   TEXT NOT NULL,
+              content_id  TEXT NOT NULL,
+              version     INTEGER NOT NULL,
+              score       REAL NOT NULL,
+              kind        TEXT,
+              meta        TEXT,
+              created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (node_path, content_id, version)
+            )
+        """
+        )
+
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_linkv_content ON link_versions (content_id, version DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_linkv_node ON link_versions (node_path, created_at DESC)"
+        )
+
+        # link_backrefs table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS link_backrefs (
+              content_id   TEXT NOT NULL,
+              node_path    TEXT NOT NULL,
+              hit_count    INTEGER NOT NULL DEFAULT 0,
+              last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (content_id, node_path)
+            )
+        """
+        )
+
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_backref_content ON link_backrefs (content_id, hit_count DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_backref_node ON link_backrefs (node_path, hit_count DESC)"
+        )
+
+        self.conn.commit()
+
+    def write_link_version(
+        self,
+        node_path: str,
+        content_id: str,
+        version: int,
+        score: float,
+        kind: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Write a versioned link from node to content.
+
+        Args:
+            node_path: Path of the node
+            content_id: ID of the content
+            version: Version number (for tracking multiple versions)
+            score: Base weight score (before recency decay)
+            kind: Optional content type
+            meta: Optional metadata
+        """
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        meta_json = json.dumps(meta) if meta else None
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO link_versions
+            (node_path, content_id, version, score, kind, meta, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+            (node_path, content_id, version, score, kind, meta_json),
+        )
+        self.conn.commit()
+
+        # Record metric (local import to avoid circular dependency)
+        try:
+            from atlas.metrics.mensum import metrics_ns
+
+            metrics_ns().inc_counter("reticulum_link_writes", labels={"kind": kind or "untyped"})
+        except Exception:
+            pass
+
+    def recent_links(
+        self, lambda_per_day: float = 0.1, top_k: int = 20, path_prefix: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent links (all link_versions) with recency decay applied.
+
+        Effective score: base_score * exp(-lambda_per_day * age_days)
+
+        Args:
+            lambda_per_day: Decay constant (per day)
+            top_k: How many to return
+            path_prefix: Optional prefix to filter nodes (subtree search)
+
+        Returns:
+            List of dicts with content_id, node_path, score, version, created_at_ts
+        """
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        now_ts = time.time()
+
+        if path_prefix:
+            like_pattern = f"{path_prefix}%"
+            cursor.execute(
+                """
+                SELECT DISTINCT content_id, node_path, score, version, strftime('%s', created_at), kind, meta
+                FROM link_versions
+                WHERE node_path LIKE ?
+                ORDER BY created_at DESC
+            """,
+                (like_pattern,),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT DISTINCT content_id, node_path, score, version, strftime('%s', created_at), kind, meta
+                FROM link_versions
+                ORDER BY created_at DESC
+            """
+            )
+
+        rows = cursor.fetchall()
+        results = []
+
+        for content_id, node_path, score, version, created_at_ts_str, kind, meta_json in rows:
+            created_at_ts = float(created_at_ts_str) if created_at_ts_str else now_ts
+            age_days = max((now_ts - created_at_ts) / 86400.0, 0.0)
+            eff = float(score) * math.exp(-lambda_per_day * age_days)
+            # Normalize for stable sorting
+            eff = round(eff, 12)
+            meta = json.loads(meta_json) if meta_json else None
+            results.append(
+                {
+                    "content_id": content_id,
+                    "node_path": node_path,
+                    "score": float(score),
+                    "version": version,
+                    "created_at_ts": created_at_ts,
+                    "kind": kind,
+                    "meta": meta,
+                    "effective_score": eff,
+                }
+            )
+
+        # Sort by effective score descending
+        results.sort(key=lambda x: x["effective_score"], reverse=True)
+        return results[:top_k]
+
+    def neighbors_from_node(
+        self, node_path: str, top_k: int = 20, lambda_per_day: float = 0.1
+    ) -> List[str]:
+        """
+        Get top-k content_ids from a node, weighted by recency and base score.
+
+        Effective score: base_score * exp(-lambda_per_day * age_days)
+
+        Args:
+            node_path: Path of the source node
+            top_k: How many to return
+            lambda_per_day: Decay constant (per day)
+
+        Returns:
+            List of content_ids, top-k by effective score
+        """
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        now_ts = time.time()
+
+        cursor.execute(
+            """
+            SELECT DISTINCT content_id, score, strftime('%s', created_at)
+            FROM link_versions
+            WHERE node_path = ?
+            ORDER BY created_at DESC
+        """,
+            (node_path,),
+        )
+
+        rows = cursor.fetchall()
+        results = []
+
+        for content_id, score, created_at_ts_str in rows:
+            created_at_ts = float(created_at_ts_str) if created_at_ts_str else now_ts
+            age_days = max((now_ts - created_at_ts) / 86400.0, 0.0)
+            eff = float(score) * math.exp(-lambda_per_day * age_days)
+            # Normalize for stable sorting
+            eff = round(eff, 12)
+            results.append((content_id, eff))
+
+        # Sort by effective score descending
+        results.sort(key=lambda x: x[1], reverse=True)
+        return [cid for cid, _ in results[:top_k]]
+
+    def backref_touch(self, content_id: str, node_path: str) -> None:
+        """Record or increment a backward reference (content ← node)."""
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO link_backrefs (content_id, node_path, hit_count, last_seen_at)
+            VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT(content_id, node_path) DO UPDATE SET
+              hit_count = hit_count + 1,
+              last_seen_at = CURRENT_TIMESTAMP
+        """,
+            (content_id, node_path),
+        )
+        self.conn.commit()
+
+        # Record metric
+        try:
+            from atlas.metrics.mensum import metrics_ns
+
+            metrics_ns().inc_counter("reticulum_backref_touch")
+        except Exception:
+            pass
+
+    def top_backrefs(self, content_id: str, top_k: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get top-k nodes referencing a content (sorted by hit count).
+
+        Returns:
+            List of {"node_path": str, "hit_count": int, "last_seen_at": float}
+        """
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT lb.node_path, lb.hit_count, strftime('%s', lb.last_seen_at)
+            FROM link_backrefs lb
+            WHERE lb.content_id = ?
+            ORDER BY lb.hit_count DESC, lb.last_seen_at DESC
+            LIMIT ?
+        """,
+            (content_id, top_k),
+        )
+
+        rows = cursor.fetchall()
+        return [
+            {
+                "node_path": r[0],
+                "hit_count": r[1],
+                "last_seen_at": float(r[2]) if r[2] else time.time(),
+            }
+            for r in rows
+        ]
+
+    def resolve_latest_reticulum(self, content_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Resolve latest versions of a content across all nodes.
+
+        Returns:
+            List of {"node_path": str, "version": int, "created_at_ts": float}
+        """
+        self._init_reticulum_tables()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT node_path, MAX(version) AS max_version, strftime('%s', MAX(created_at))
+            FROM link_versions
+            WHERE content_id = ?
+            GROUP BY node_path
+            ORDER BY max_version DESC
+            LIMIT ?
+        """,
+            (content_id, top_k),
+        )
+
+        rows = cursor.fetchall()
+        return [
+            {
+                "node_path": r[0],
+                "version": int(r[1]),
+                "created_at_ts": float(r[2]) if r[2] else time.time(),
+            }
+            for r in rows
+        ]

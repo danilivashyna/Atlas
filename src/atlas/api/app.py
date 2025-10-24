@@ -8,6 +8,7 @@ REST API for semantic space operations with encode, decode, and explain endpoint
 """
 
 import logging
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -71,6 +72,11 @@ ROUTER_GAMMA = float(os.getenv("ATLAS_ROUTER_GAMMA", "0.1"))
 ROUTER_DELTA = float(os.getenv("ATLAS_ROUTER_DELTA", "0.05"))  # v0.5: path-aware prior
 ROUTER_TAU = float(os.getenv("ATLAS_ROUTER_TAU", "0.5"))
 ROUTER_DECAY = float(os.getenv("ATLAS_ROUTER_DECAY", "0.85"))  # v0.5: inherited weight decay
+# Beam loop parameters (v0.6)
+ROUTER_BEAM = int(os.getenv("ATLAS_ROUTER_BEAM", "5"))
+ROUTER_DEPTH = int(os.getenv("ATLAS_ROUTER_DEPTH", "2"))
+ROUTER_CONF = float(os.getenv("ATLAS_ROUTER_CONF", "0.85"))
+ROUTER_K_MULT = float(os.getenv("ATLAS_ROUTER_K_MULT", "3.0"))
 
 # ANN index (v0.5)
 ANN_BACKEND = os.getenv("ATLAS_ANN_BACKEND", "inproc")  # inproc | faiss | off
@@ -87,6 +93,57 @@ semantic_space = None
 hierarchical_encoder = None
 hierarchical_decoder = None
 metrics = {"requests_total": 0, "requests_by_endpoint": {}, "latencies": {}, "errors_total": 0}
+
+# Autoscaling state (v0.7)
+autoscale_beam = ROUTER_BEAM
+autoscale_depth = ROUTER_DEPTH
+autoscale_tau = ROUTER_TAU
+autoscale_recent_conf = []  # last 10 confidence values
+autoscale_timer = None
+
+
+def autoscale_controller():
+    """Background autoscaling task."""
+    from atlas.metrics.mensum import metrics_ns
+
+    global autoscale_beam, autoscale_depth, autoscale_tau, autoscale_recent_conf, autoscale_timer
+
+    try:
+        # Check if enabled
+        if os.getenv("ATLAS_AUTOSCALE", "on").lower() == "off":
+            return
+
+        # Get recent confidence (mock for now, in real would query mensum)
+        # For simplicity, assume some logic
+        if autoscale_recent_conf:
+            avg_conf = sum(autoscale_recent_conf) / len(autoscale_recent_conf)
+            if avg_conf > 0.9 and autoscale_beam > 3:
+                autoscale_beam -= 1
+                metrics_ns().inc_counter(
+                    "autoscale_changes_total", labels={"param": "beam", "direction": "down"}
+                )
+                logger.info(
+                    f"autoscale: beam {autoscale_beam + 1}→{autoscale_beam} (conf={avg_conf:.3f})"
+                )
+            elif avg_conf < 0.8 and autoscale_beam < 12:
+                autoscale_beam += 1
+                metrics_ns().inc_counter(
+                    "autoscale_changes_total", labels={"param": "beam", "direction": "up"}
+                )
+                logger.info(
+                    f"autoscale: beam {autoscale_beam - 1}→{autoscale_beam} (conf={avg_conf:.3f})"
+                )
+
+        # Clear recent conf for next period
+        autoscale_recent_conf.clear()
+
+    except Exception as e:
+        logger.error(f"Autoscale error: {e}")
+    finally:
+        # Schedule next
+        period = int(os.getenv("ATLAS_AUTOSCALE_PERIOD_S", "30"))
+        autoscale_timer = threading.Timer(period, autoscale_controller)
+        autoscale_timer.start()
 
 
 @asynccontextmanager
@@ -105,6 +162,11 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Semantic Space: {e}")
         raise
 
+    # Start autoscaling controller
+    if os.getenv("ATLAS_AUTOSCALE", "on").lower() != "off":
+        autoscale_controller()
+        logger.info("Autoscaling controller started")
+
     # Attempt to register optional memory routes at startup. This is done here
     # (not only at import time) so that TestClient and other runtimes pick up
     # the routes even if the module import happened earlier.
@@ -117,6 +179,9 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if autoscale_timer:
+        autoscale_timer.cancel()
+        logger.info("Autoscaling controller stopped")
     logger.info("Shutting down Atlas API...")
 
 
@@ -313,16 +378,9 @@ async def get_metrics():
 
 @app.get("/metrics/prom")
 def metrics_prom():
-    from atlas.metrics.mensum import get_metrics
+    from atlas.metrics.mensum import metrics_ns
 
-    labels = {
-        "ann_backend": os.getenv("ATLAS_ANN_BACKEND", "inproc"),
-        "router_mode": os.getenv("ATLAS_ROUTER_MODE", "on"),
-        "memory_backend": os.getenv("ATLAS_MEMORY_BACKEND", "sqlite"),
-        "summary_mode": os.getenv("ATLAS_SUMMARY_MODE", "proportional"),
-    }
-    mensum = get_metrics()
-    text = mensum.to_prom(**labels)
+    text = metrics_ns().to_prom()
     return Response(content=text, media_type="text/plain; version=0.0.4")
 
 

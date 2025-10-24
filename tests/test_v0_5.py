@@ -174,7 +174,7 @@ def test_link_write_query(client, node_store):
     response1 = client.post(
         "/reticulum/link_version",
         json={
-            "path": "dim2/dim2.4",
+            "node_path": "dim2/dim2.4",
             "content_id": "doc:cats101",
             "version": 1,
             "kind": "doc",
@@ -186,7 +186,7 @@ def test_link_write_query(client, node_store):
     assert response1.json()["ok"] is True
 
     # Query link
-    response2 = client.post("/reticulum/recent", json={"path": "dim2/dim2.4", "top_k": 5})
+    response2 = client.post("/reticulum/recent", json={"path_prefix": "dim2/dim2.4", "top_k": 5})
     assert response2.status_code == 200
     data = response2.json()
     assert len(data["items"]) == 1
@@ -199,7 +199,7 @@ def test_query_subtree(client, node_store):
     client.post(
         "/reticulum/link_version",
         json={
-            "path": "dim2",
+            "node_path": "dim2",
             "content_id": "doc:animals",
             "version": 1,
             "score": 0.8,
@@ -208,7 +208,7 @@ def test_query_subtree(client, node_store):
     client.post(
         "/reticulum/link_version",
         json={
-            "path": "dim2/dim2.4",
+            "node_path": "dim2/dim2.4",
             "content_id": "doc:cats",
             "version": 1,
             "score": 0.9,
@@ -217,7 +217,7 @@ def test_query_subtree(client, node_store):
     client.post(
         "/reticulum/link_version",
         json={
-            "path": "dim2/dim2.5",
+            "node_path": "dim2/dim2.5",
             "content_id": "doc:dogs",
             "version": 1,
             "score": 0.85,
@@ -225,7 +225,7 @@ def test_query_subtree(client, node_store):
     )
 
     # Query subtree with prefix
-    response = client.post("/reticulum/recent", json={"path": "dim2", "top_k": 10})
+    response = client.post("/reticulum/recent", json={"path_prefix": "dim2", "top_k": 10})
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) >= 2  # Should get dim2 and children
@@ -233,7 +233,7 @@ def test_query_subtree(client, node_store):
 
 def test_missing_path_grace(client):
     """Test graceful handling of missing paths."""
-    response = client.post("/reticulum/recent", json={"path": "nonexistent", "top_k": 5})
+    response = client.post("/reticulum/recent", json={"path_prefix": "nonexistent", "top_k": 5})
     assert response.status_code == 200
     data = response.json()
     assert data["items"] == []
