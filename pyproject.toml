@@ -23,7 +23,7 @@ email = "danilivashyna@gmail.com"
 text = "AGPL-3.0-or-later"
 
 [project.optional-dependencies]
-dev = [ "pytest>=6.0", "pytest-cov>=2.12", "pytest-xdist>=2.5", "black>=22.0", "isort>=5.10", "flake8>=4.0", "mypy>=0.950",]
+dev = [ "httpx>=0.24.0",  "pytest>=6.0", "pytest-cov>=2.12", "pytest-xdist>=2.5", "black>=22.0", "isort>=5.10", "flake8>=4.0", "mypy>=0.950",]
 api = [ "fastapi>=0.100.0", "uvicorn[standard]>=0.20.0", "pydantic>=2.0.0",]
 mlops = [ "wandb>=0.15.0", "mlflow>=2.0.0",]
 all = [ "atlas-semantic-space[dev,api,mlops]",]
