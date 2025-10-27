@@ -14,7 +14,10 @@ E4 замыкает контур самосознания:
     Observe (E3) → Decide (policy) → Act (actions) → Reflect (audit) → Observe
 """
 
-from atlas.homeostasis.policy import (
+"""Atlas Homeostasis module for E4 (self-healing loop)."""
+
+from .decision import ActionDecision, CooldownEntry, DecisionEngine, RateLimitWindow
+from .policy import (
     Action,
     CompositeLogic,
     CompositeTrigger,
@@ -28,21 +31,20 @@ from atlas.homeostasis.policy import (
 )
 
 __all__ = [
-    # Policy Engine
+    # Policy Engine (E4.1)
     "PolicyEngine",
     "Policy",
-    "PolicyEvaluationResult",
-    
-    # Triggers
     "SimpleTrigger",
     "CompositeTrigger",
-    
-    # Actions & Criteria
     "Action",
     "SuccessCriteria",
-    
-    # Enums
     "Priority",
     "Operator",
     "CompositeLogic",
+    "PolicyEvaluationResult",
+    # Decision Engine (E4.2)
+    "DecisionEngine",
+    "ActionDecision",
+    "CooldownEntry",
+    "RateLimitWindow",
 ]
