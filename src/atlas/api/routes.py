@@ -250,19 +250,77 @@ async def ready(request: Request) -> ReadyResponse:
     summary="Prometheus metrics",
     description="Exports Prometheus-format metrics for monitoring",
 )
-async def metrics() -> str:
+async def metrics(request: Request) -> str:
     """
     Prometheus metrics export endpoint.
+    
+    Args:
+        request: FastAPI Request (access to app.state)
     
     Returns:
         Plain text in Prometheus format
     
+    Metrics exported:
+        - atlas_h_coherence{level_pair}: H-Coherence scores
+        - atlas_h_stability{perturbation}: H-Stability drift scores
+        - atlas_indices_loaded: Binary flag (0/1)
+        - atlas_index_vectors{level}: Number of vectors per index
+    
     Notes:
-        - TODO: Implement actual metrics collection (E3)
-        - Should include: request counts, latencies, index sizes, etc.
+        - Config-driven thresholds from h_metrics.yaml
+        - Returns stub metrics if indices not loaded
     """
-    # TODO: Implement via metrics framework (E3)
-    return "# Atlas β metrics (not yet implemented)\n"
+    lines = []
+    
+    # Header
+    lines.append("# HELP atlas_indices_loaded Whether indices are loaded (0=no, 1=yes)")
+    lines.append("# TYPE atlas_indices_loaded gauge")
+    
+    indices_loaded = getattr(request.app.state, "indices_loaded", False)
+    lines.append(f"atlas_indices_loaded {1 if indices_loaded else 0}")
+    
+    if not indices_loaded:
+        # Return stub if indices not loaded
+        lines.append("\n# Indices not loaded — metrics unavailable")
+        return "\n".join(lines) + "\n"
+    
+    # Get indices from app.state
+    indices = getattr(request.app.state, "indices", {})
+    
+    # Index vector counts
+    lines.append("\n# HELP atlas_index_vectors Number of vectors in each index")
+    lines.append("# TYPE atlas_index_vectors gauge")
+    
+    for level, builder in indices.items():
+        num_vectors = getattr(builder, "num_elements", 0)
+        lines.append(f'atlas_index_vectors{{level="{level}"}} {num_vectors}')
+    
+    # H-Coherence metrics (mock for now — need actual data)
+    lines.append("\n# HELP atlas_h_coherence Hierarchical coherence between levels")
+    lines.append("# TYPE atlas_h_coherence gauge")
+    lines.append('atlas_h_coherence{level_pair="sent_to_para"} 0.0  # Requires test data')
+    lines.append('atlas_h_coherence{level_pair="para_to_doc"} 0.0  # Requires test data')
+    
+    # H-Stability metrics (mock for now — need actual data)
+    lines.append("\n# HELP atlas_h_stability_drift Embedding drift under perturbations")
+    lines.append("# TYPE atlas_h_stability_drift gauge")
+    lines.append('atlas_h_stability_drift{perturbation="gaussian_3pct"} 0.0  # Requires test data')
+    
+    # Config thresholds (for reference)
+    from atlas.configs import ConfigLoader
+    h_coherence_cfg = ConfigLoader.get_h_coherence_targets()
+    h_stability_cfg = ConfigLoader.get_h_stability_targets()
+    
+    lines.append("\n# HELP atlas_h_coherence_target Target threshold for H-Coherence")
+    lines.append("# TYPE atlas_h_coherence_target gauge")
+    lines.append(f'atlas_h_coherence_target{{level_pair="sent_to_para"}} {h_coherence_cfg["sent_to_para"]}')
+    lines.append(f'atlas_h_coherence_target{{level_pair="para_to_doc"}} {h_coherence_cfg["para_to_doc"]}')
+    
+    lines.append("\n# HELP atlas_h_stability_max_drift Maximum acceptable drift")
+    lines.append("# TYPE atlas_h_stability_max_drift gauge")
+    lines.append(f'atlas_h_stability_max_drift {h_stability_cfg["max_drift"]}')
+    
+    return "\n".join(lines) + "\n"
 
 
 # ============================================================================
