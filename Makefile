@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Atlas Makefile — quick commands for development & deployment
 
-.PHONY: help venv install test lint format run docker docker-build docker-run clean
+.PHONY: help venv install test lint format run docker docker-build docker-run validate smoke clean
 
 help:
 	@echo "Atlas — Semantic Space Control Panel"
@@ -9,6 +9,8 @@ help:
 	@echo "Available targets:"
 	@echo "  make venv          Create Python virtual environment"
 	@echo "  make install       Install dependencies (dev + main)"
+	@echo "  make validate      Validate all baseline configs (--strict)"
+	@echo "  make smoke         Run wiring smoke tests"
 	@echo "  make test          Run pytest suite (tests/)"
 	@echo "  make lint          Run ruff + black check"
 	@echo "  make format        Format code with black + isort"
@@ -25,6 +27,14 @@ venv:
 install: venv
 	./venv/bin/pip install -e .[dev]
 	@echo "✅ Dependencies installed"
+
+validate:
+	python scripts/validate_baseline.py --strict
+	@echo "✅ Baseline configs validated"
+
+smoke:
+	python scripts/smoke_test_wiring.py
+	@echo "✅ Wiring smoke tests passed"
 
 test:
 	pytest tests/ -v --tb=short
@@ -66,3 +76,4 @@ clean:
 	@echo "✅ Cache cleaned"
 
 .DEFAULT_GOAL := help
+
