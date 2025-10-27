@@ -15,8 +15,6 @@
 
 **CI Gates:** `make validate` ✅ + `make smoke` ✅ перед merge в main
 
-**PR Checklist:** [`docs/PR_SCOPE_CHECKLIST.md`](PR_SCOPE_CHECKLIST.md) — обязательно перед каждым PR (scope validation, determinism, no HSI)
-
 ---
 
 ## �📊 Общий прогресс

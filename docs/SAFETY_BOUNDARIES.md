@@ -1,26 +1,5 @@
 # Atlas β — Safety Boundaries
 
----
-
-## ⚠️ System Classification
-
-**Atlas β is a deterministic memory engine, not an AGI system or consciousness prototype.**
-
-This codebase implements:
-- ✅ Hierarchical encoding/decoding (token → sentence → paragraph → document)
-- ✅ Multi-level search with deterministic fusion (RRF, max_sim)
-- ✅ Metric collection (H-Coherence, H-Stability, latency)
-- ✅ Stateless API routing (FastAPI)
-
-This codebase explicitly does NOT implement:
-- ❌ Consciousness, self-reflection, or autonomous agency
-- ❌ Attention mechanisms for "importance" weighting
-- ❌ Online learning or parameter self-modification
-- ❌ Human-level Self-Improvement (HSI) feedback loops
-- ❌ Observer patterns or hidden state machines
-
----
-
 ## Философия: Zero Human-level Self-Improvement (HSI)
 
 Atlas β — это **статический, детерминированный поисковый система** с жёсткими границами. Никакие компоненты не могут самостоятельно улучшаться, адаптироваться или учиться.
