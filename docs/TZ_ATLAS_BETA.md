@@ -1,5 +1,27 @@
 # Atlas β — ТЗ (память + иерархия + безопасные стыки с FAB)
 
+---
+
+## ⚠️ Scope Clarification
+
+**Atlas β implements only the Memory and Hierarchical Encoding subsystem.**
+
+- This codebase is a **memory engine**, not an AGI prototype, consciousness simulator, or self-improving system.
+- Conscious or self-reflective behaviors (FAB/HSI/Sphere layers, observer patterns, attention policies) are **explicitly out of scope**.
+- FAB acts **only as a stateless data routing layer** — no feedback loops, no learning, no state mutation.
+- All logic is **deterministic, reproducible, and verifiable** via `make validate` and `make smoke`.
+- HSI (Human-level Self-Improvement) boundaries are **hard constraints** enforced via ConfigLoader, MANIFEST validation, and CI/CD gates.
+
+**Development rules for E1–E7:**
+- ✅ Focus strictly on: schemas, indices, metrics, API contracts
+- ✅ Keep all changes tracked in git (no runtime mutations)
+- ✅ Validate all configs before each commit
+- ✅ Use RRF/max_sim for deterministic fusion
+- ❌ Do not implement: attention, online learning, hidden state, HSI concepts
+- ❌ Do not reference: consciousness, self-reflection, autonomous goals
+
+---
+
 ## 0) Цель релиза
 
 Довести Atlas до беты как производственную систему иерархической памяти и смысловой навигации:
