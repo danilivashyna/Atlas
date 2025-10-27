@@ -2,23 +2,37 @@
 
 ---
 
-## ⚠️ Scope Clarification
+## ⚠️ **Scope Clarification**
 
-**Atlas β implements only the Memory and Hierarchical Encoding subsystem.**
+**Atlas β implements ONLY the Memory and Hierarchical Encoding subsystem.**
 
-- This codebase is a **memory engine**, not an AGI prototype, consciousness simulator, or self-improving system.
-- Conscious or self-reflective behaviors (FAB/HSI/Sphere layers, observer patterns, attention policies) are **explicitly out of scope**.
-- FAB acts **only as a stateless data routing layer** — no feedback loops, no learning, no state mutation.
-- All logic is **deterministic, reproducible, and verifiable** via `make validate` and `make smoke`.
-- HSI (Human-level Self-Improvement) boundaries are **hard constraints** enforced via ConfigLoader, MANIFEST validation, and CI/CD gates.
+- **This is a memory engine, NOT an AGI prototype.**
+- Conscious or self-reflective behaviors (FAB/HSI/Sphere layers) are **explicitly out of scope**.
+- FAB acts **only as a stateless data routing layer**, not a feedback or learning loop.
+- All logic must be **deterministic, reproducible, and verifiable** via `make validate` and `make smoke`.
 
-**Development rules for E1–E7:**
-- ✅ Focus strictly on: schemas, indices, metrics, API contracts
-- ✅ Keep all changes tracked in git (no runtime mutations)
-- ✅ Validate all configs before each commit
-- ✅ Use RRF/max_sim for deterministic fusion
-- ❌ Do not implement: attention, online learning, hidden state, HSI concepts
-- ❌ Do not reference: consciousness, self-reflection, autonomous goals
+**What Atlas β IS:**
+- ✅ Hierarchical semantic memory (5D + token/sent/para/doc levels)
+- ✅ Multi-level search with deterministic fusion (RRF, max_sim)
+- ✅ Index builders (HNSW/FAISS) with MANIFEST versioning
+- ✅ Memory quality metrics (H-Coherence, H-Stability)
+- ✅ Stateless API with Pydantic validation
+
+**What Atlas β IS NOT:**
+- ❌ Consciousness / self-awareness / observer patterns
+- ❌ Attention policies / intention mechanisms
+- ❌ Online learning / self-modification without review
+- ❌ Autonomous agents / planning systems
+- ❌ HSI (Human-level Self-Improvement) crossing boundaries
+
+**Safety Constraints:**
+- All parameters in configs (git-tracked, reviewed)
+- MANIFEST validates artifacts (SHA256 checksums)
+- No runtime config mutation
+- ConfigLoader is read-only
+- RRF/max_sim are pure functions (same input → same output)
+
+**Focus:** E1–E3 roadmap tasks (schemas → indices → metrics). Keep all work within memory subsystem boundaries.
 
 ---
 
