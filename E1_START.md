@@ -5,6 +5,27 @@
 
 ---
 
+## ⚠️ **Critical Scope Reminder**
+
+**Atlas β = Memory Engine ONLY. Not an AGI prototype.**
+
+Read the full scope clarification in [`docs/TZ_ATLAS_BETA.md`](docs/TZ_ATLAS_BETA.md).
+
+**What we're building:**
+- ✅ Hierarchical semantic memory (5D + multi-level encoding)
+- ✅ Search with deterministic fusion (RRF)
+- ✅ Index builders + MANIFEST versioning
+- ✅ Memory quality metrics (H-Coherence, H-Stability)
+
+**What we're NOT building:**
+- ❌ Consciousness / observer patterns / HSI
+- ❌ Attention policies / autonomous agents
+- ❌ Online learning / self-modification
+
+**All work must be:** deterministic, reproducible, stateless, config-driven.
+
+---
+
 ## 📦 Полный пакет (все 8 коммитов)
 
 ```
