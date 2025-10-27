@@ -1,5 +1,7 @@
 # Atlas β — E1-E3 Development Roadmap
 
+**⚠️ SCOPE:** Memory engine only. Not an AGI prototype. See [`TZ_ATLAS_BETA.md`](TZ_ATLAS_BETA.md) scope clarification.
+
 **Фокус:** API контракты → Индексы → Метрики (базовый каркас)  
 **Период:** 2–3 недели, параллельная разработка  
 **Ветки:** `feature/E1-*`, `feature/E2-*`, `feature/E3-*`  
