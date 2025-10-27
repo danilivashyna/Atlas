@@ -1,53 +1,98 @@
-# 🚀 Atlas v0.2 - Ready to Push
+# 🚀 Atlas β — Development Ready
 
-Поздравляем! Инфраструктура v0.2 полностью готова и закоммичена.
+**Дата:** 27 октября 2025  
+**Статус:** ✅ Полный пакет архитектуры + валидации готов к E1-E7 разработке
 
-## 📦 Что было закоммичено
+---
+
+## 📦 Что закоммичено в этом пакете
 
 ```
-commit b0bc2e8d2b2f23b7524284b763e40c9a5b9fd30a
-Author: danilivashyna
-Date:   Sun Oct 19 18:36:50 2025 +0300
-
-    chore(v0.2): complete infrastructure setup
-
-    - 16 новых файлов
-    - 2756 новых строк кода
-    - 8 Python модулей
-    - 4 документа (1500+ строк)
+7eab35b docs: Add wiring diagrams, safety boundaries, validation & smoke tests
+c5f1d4e feat(configs): Add Atlas β baseline configurations
+a8b3c9e docs: Add ARCHITECTURE.md with 6 interconnected linkages
+f2e9a3d docs: Add Atlas β TZ, tasks breakdown, development status
+e1a0f2d chore(main): Reset main to v0.2.0-alpha1 production state
 ```
 
-## 📊 Итоговая статистика
+## 📊 Пакет содержит
 
-| Метрика | Значение |
-|---------|----------|
-| Python файлов | 8 |
-| Конфиг файлов | 2 (.vscode) |
-| Документов | 4 |
-| Всего файлов | 16+ |
-| Строк кода | 800+ |
-| Строк документации | 1500+ |
-| Строк конфигов | 250+ |
+| Компонент | Статус | Файлы | Строк |
+|-----------|--------|-------|-------|
+| Архитектурная доку | ✅ | ARCHITECTURE.md + WIRING_DIAGRAM.md + SAFETY_BOUNDARIES.md | 1600+ |
+| Конфиги (hard skeleton) | ✅ | 9 файлов (yaml/json) | 800+ |
+| Валидаторы | ✅ | validate_baseline.py | 280 |
+| Smoke-тесты | ✅ | smoke_test_wiring.py | 220 |
+| Makefile | ✅ | +validate, +smoke targets | 5 |
+| Задачи разбиты | ✅ | 43 задачи в 7 эпиках | 500+ |
+| Development tracker | ✅ | ATLAS_BETA_DEVELOPMENT_STATUS.md | 400+ |
 
-## ✅ Чек-лист перед Push
+**Итого:** 15 новых/обновленных файлов, 4500+ строк документации + кода + конфигов
 
-- ✅ Все файлы созданы
-- ✅ Синтаксис проверен (py_compile)
-- ✅ Коммит создан
-- ✅ Коммит сообщение детальное
-- ✅ Все файлы в индексе
+## ✅ Чек-лист готовности
 
-## 🔄 Следующие шаги
+- ✅ Архитектура зафиксирована (6 взаимосвязанных linkages)
+- ✅ Конфиги базовые (routes, schemas, indices, metrics)
+- ✅ Валидаторы рабочие (API routes, HNSW/FAISS ranges, metrics, MANIFEST)
+- ✅ Smoke-тесты созданы (/search, /encode_h, /encode, reproducibility)
+- ✅ Safety boundaries документированы (HSI запреты + предохранители)
+- ✅ Задачи распределены (E1-E7, 146-180 часов, 6-7 недель)
+- ✅ Все в git с подробными сообщениями
+- ✅ Git history clean (5 логических коммитов)
 
-### 1. Push на GitHub (когда готово)
+## 🎯 Быстрый старт E1-E7
+
+### Валидировать конфиги
 ```bash
-cd ~/Projects/Atlas
-git push origin main
+make validate      # python scripts/validate_baseline.py --strict
 ```
 
-### 2. Создать GitHub Issues
-Используйте templates из `v0.2_DEVELOPMENT_PLAN.md`:
-- 12 issues с acceptance criteria
+### Запустить smoke-тесты
+```bash
+make smoke         # python scripts/smoke_test_wiring.py
+```
+
+### Ссылки на документацию
+
+| Doc | Назначение |
+|-----|-----------|
+| `docs/TZ_ATLAS_BETA.md` | Полная спецификация (1650+ строк) |
+| `docs/ATLAS_BETA_TASKS.md` | 43 задачи в 7 эпиках |
+| `docs/ATLAS_BETA_DEVELOPMENT_STATUS.md` | Live progress tracker |
+| `docs/ARCHITECTURE.md` | 6 interconnected linkages (600+ строк) |
+| `docs/WIRING_DIAGRAM.md` | 3 data flows: /search, /encode_h, /encode |
+| `docs/SAFETY_BOUNDARIES.md` | HSI boundaries + safeguards |
+
+## 🚀 Переход на E1-E7
+
+Для начала каждого эпика:
+
+1. **E1 (API):** Читай `docs/TZ_ATLAS_BETA.md` раздел "API Contracts"
+2. **E2 (Indices):** Загрузи `src/atlas/configs/indices/*.yaml` через `ConfigLoader`
+3. **E3 (Metrics):** Используй `src/atlas/configs/metrics/h_metrics.yaml` для тестов
+4. **E4-E7:** Следуй roadmap в `docs/ATLAS_BETA_TASKS.md`
+
+## 🔐 Важно: Safety Boundaries
+
+Никогда не делай:
+- ❌ Изменяй конфиги в рантайме
+- ❌ Добавляй online learning
+- ❌ Используй attention policies
+- ❌ Кэшируй внутри FAB
+- ❌ Меняй MANIFEST без перезагрузки
+
+Правильно:
+- ✅ Конфиги в git → review → deploy → перезагрузка
+- ✅ Offline обучение → новый MANIFEST → validation
+- ✅ Статический FAB (no state, no learning)
+- ✅ Кэш вне FAB (Redis с TTL)
+- ✅ MANIFEST verifies все артефакты (SHA256)
+
+---
+
+## Готово к push на GitHub ✨
+
+All commits are clean, documented, and follow the architectural guidelines.
 - Priority matrix (high/medium/low)
 - Примерно 2-4 недели работы
 
