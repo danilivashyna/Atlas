@@ -16,6 +16,7 @@ E4 замыкает контур самосознания:
 
 """Atlas Homeostasis module for E4 (self-healing loop)."""
 
+from .actions import ActionAdapter, ActionResult, ActionStatus
 from .decision import ActionDecision, CooldownEntry, DecisionEngine, RateLimitWindow
 from .policy import (
     Action,
@@ -47,4 +48,8 @@ __all__ = [
     "ActionDecision",
     "CooldownEntry",
     "RateLimitWindow",
+    # Action Adapters (E4.3)
+    "ActionAdapter",
+    "ActionResult",
+    "ActionStatus",
 ]
