@@ -1,0 +1,288 @@
+# Atlas β — Memory Quality Metrics Configuration
+# Version: 0.2.0-beta
+# Description: H-Coherence, H-Stability, and IR metrics thresholds
+
+# ============================================================================
+# H-Coherence Metric
+# ============================================================================
+# Definition: Average cosine similarity between adjacent hierarchical levels
+# Formula: coherence(L1, L2) = mean(cos(v_L1_i, v_L2_i)) for all i
+# Measures: How well hierarchical levels align semantically
+
+h_coherence:
+  # Sentence → Paragraph coherence threshold
+  sent_to_para:
+    # Target: vectors between sentence and paragraph level align well
+    target: 0.78
+    warning: 0.70
+    critical: 0.65
+    description: "Average cosine sim between sent-level and para-level embeddings"
+  
+  # Paragraph → Document coherence threshold
+  para_to_doc:
+    # Target: vectors between paragraph and document level align well
+    target: 0.80
+    warning: 0.72
+    critical: 0.68
+    description: "Average cosine sim between para-level and doc-level embeddings"
+
+  # Test set size for measurement
+  test_set_size: 1000
+  
+  # How often to measure (continuous monitoring)
+  measure_frequency: "hourly"
+
+# ============================================================================
+# H-Stability Metric
+# ============================================================================
+# Definition: Robustness of embeddings under perturbations
+# Formula: stability = 1 - mean(|cos(v_orig, v_perturbed)|)
+# Measures: How much embeddings drift with input variations
+
+h_stability:
+  # Maximum acceptable drift (1 - cos_sim)
+  max_drift: 0.08  # cos_sim ≥ 0.92 after perturbation
+  
+  warning_drift: 0.06
+  
+  # Perturbations to test
+  perturbations:
+    # Remove/add punctuation
+    - name: "punctuation"
+      severity: "low"
+      examples:
+        - original: "Hello, world!"
+          perturbed: "Hello world"
+    
+    # Case changes
+    - name: "case"
+      severity: "low"
+      examples:
+        - original: "Hello World"
+          perturbed: "hello world"
+    
+    # Tokenization changes (split/join)
+    - name: "tokenization"
+      severity: "medium"
+      examples:
+        - original: "it is"
+          perturbed: "it's"
+    
+    # Add noise (character-level)
+    - name: "noise"
+      severity: "medium"
+      noise_level: 0.05  # 5% character substitution
+    
+    # Whitespace changes
+    - name: "whitespace"
+      severity: "low"
+      examples:
+        - original: "hello  world"
+          perturbed: "hello world"
+  
+  # Test set size
+  test_set_size: 500
+  
+  # Measure frequency
+  measure_frequency: "daily"
+
+# ============================================================================
+# IR (Information Retrieval) Metrics
+# ============================================================================
+# Measures: Search quality (Recall@k, nDCG@k)
+
+ir_metrics:
+  # Recall@k: Fraction of relevant docs in top-k results
+  recall:
+    targets:
+      # Recall@10 on sentence-level search
+      sent_recall_at_10:
+        target: 0.85
+        warning: 0.75
+        critical: 0.65
+      
+      # Recall@10 on paragraph-level search
+      para_recall_at_10:
+        target: 0.88
+        warning: 0.78
+        critical: 0.68
+      
+      # Recall@10 on document-level search
+      doc_recall_at_10:
+        target: 0.90
+        warning: 0.80
+        critical: 0.70
+  
+  # nDCG (normalized Discounted Cumulative Gain)
+  ndcg:
+    targets:
+      sent_ndcg_at_10:
+        target: 0.82
+        warning: 0.72
+        critical: 0.62
+      
+      para_ndcg_at_10:
+        target: 0.85
+        warning: 0.75
+        critical: 0.65
+      
+      doc_ndcg_at_10:
+        target: 0.88
+        warning: 0.78
+        critical: 0.68
+  
+  # Test queries (per level)
+  num_test_queries: 100
+  
+  # Ground truth: qrels (query -> relevant docs)
+  # Format: qrels_file.txt (standard TREC format)
+  qrels_path: "samples/metrics_qrels.txt"
+
+# ============================================================================
+# Latency Metrics
+# ============================================================================
+# Measures: API response times
+
+latency:
+  # /encode latency
+  encode:
+    p50_ms: 5
+    p95_ms: 15
+    p99_ms: 30
+  
+  # /decode latency
+  decode:
+    p50_ms: 3
+    p95_ms: 10
+    p99_ms: 25
+  
+  # /search latency (most critical)
+  search:
+    # GPU target
+    gpu:
+      p50_ms: 60
+      p95_ms: 150
+      p99_ms: 300
+    
+    # CPU target
+    cpu:
+      p50_ms: 200
+      p95_ms: 400
+      p99_ms: 800
+  
+  # Cold start (first request after boot)
+  cold_start:
+    max_seconds: 5
+    indices_load_max_seconds: 4
+
+# ============================================================================
+# Throughput Metrics
+# ============================================================================
+
+throughput:
+  # Queries per second
+  target_qps: 1000
+  
+  # Concurrent requests
+  max_concurrent: 100
+  
+  # Batch size for /encode
+  batch_size_encode: 32
+
+# ============================================================================
+# Memory Usage
+# ============================================================================
+
+memory:
+  # Maximum memory for indices in RAM
+  # (For 5M vectors, estimate: 5M * 384 * 4 bytes ≈ 7 GB)
+  max_indices_memory_gb: 10
+  
+  # Total process memory limit
+  max_process_memory_gb: 16
+
+# ============================================================================
+# Error Rate & Reliability
+# ============================================================================
+
+reliability:
+  # Acceptable error rate (< 1%)
+  max_error_rate_percent: 1.0
+  
+  # Request timeout (triggers error)
+  request_timeout_ms: 30000
+  
+  # Availability target (% of time system is ready)
+  target_availability_percent: 99.5
+
+# ============================================================================
+# Acceptance Criteria (Beta)
+# ============================================================================
+
+acceptance_criteria:
+  h_coherence_passed:
+    - "sent_to_para >= 0.78"
+    - "para_to_doc >= 0.80"
+  
+  h_stability_passed:
+    - "max_drift <= 0.08"
+  
+  ir_metrics_passed:
+    - "sent_recall_at_10 >= 0.85"
+    - "doc_recall_at_10 >= 0.90"
+  
+  latency_passed:
+    - "search p50 <= 60ms (GPU) or 200ms (CPU)"
+  
+  startup_passed:
+    - "cold_start <= 5 seconds"
+  
+  all_passed: "All above checks must pass for Beta acceptance"
+
+# ============================================================================
+# Prometheus Metrics (Exports)
+# ============================================================================
+
+prometheus:
+  # Metric names (exposed via /metrics)
+  metrics:
+    - name: "atlas_h_coherence_sent_para"
+      type: "gauge"
+      description: "H-Coherence: sentence to paragraph"
+    
+    - name: "atlas_h_coherence_para_doc"
+      type: "gauge"
+      description: "H-Coherence: paragraph to document"
+    
+    - name: "atlas_h_stability_drift"
+      type: "gauge"
+      description: "H-Stability: max drift under perturbations"
+    
+    - name: "atlas_ir_recall_at_k"
+      type: "gauge"
+      labels: ["level", "k"]
+      description: "Recall@k by hierarchical level"
+    
+    - name: "atlas_ir_ndcg_at_k"
+      type: "gauge"
+      labels: ["level", "k"]
+      description: "nDCG@k by hierarchical level"
+    
+    - name: "atlas_search_latency_ms"
+      type: "histogram"
+      buckets: [10, 25, 50, 100, 200, 500, 1000]
+      description: "Search query latency"
+    
+    - name: "atlas_api_requests_total"
+      type: "counter"
+      labels: ["endpoint", "status"]
+      description: "Total API requests"
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  version: "0.2.0-beta"
+  created_at: "2025-10-27T00:00:00Z"
+  notes: "Production acceptance criteria for Atlas β"

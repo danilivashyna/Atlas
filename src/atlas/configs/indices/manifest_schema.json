@@ -1,0 +1,234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Atlas β MANIFEST Schema",
+  "description": "JSON Schema for MANIFEST.v0_2.json (index versioning and validation)",
+  "version": "0.2.0-beta",
+
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^0\\.2$",
+      "description": "MANIFEST schema version (0.2 for beta)"
+    },
+    
+    "api_version": {
+      "type": "string",
+      "enum": ["beta"],
+      "description": "Atlas API version this manifest targets"
+    },
+
+    "git": {
+      "type": "object",
+      "properties": {
+        "head": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,40}$",
+          "description": "Git commit SHA (short or long)"
+        },
+        "branch": {
+          "type": "string",
+          "description": "Git branch name",
+          "examples": ["main", "beta/fab-membrane"]
+        },
+        "tag": {
+          "type": "string",
+          "description": "Optional git tag",
+          "examples": ["v0.2.0-beta"]
+        }
+      },
+      "required": ["head", "branch"],
+      "additionalProperties": false
+    },
+
+    "models": {
+      "type": "array",
+      "description": "Model artifacts (encoders, etc.)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Model name",
+            "examples": ["encoder_base", "encoder_mini6"]
+          },
+          "file": {
+            "type": "string",
+            "description": "Relative path to model file",
+            "examples": ["models/encoder_base.mxfp16"]
+          },
+          "format": {
+            "type": "string",
+            "enum": ["mxfp16", "mxfp4", "float32"],
+            "description": "Model weight format"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 hash of model file"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "File size in bytes"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["teacher", "student"],
+            "description": "Model role (teacher for S1, student for online)"
+          },
+          "optional": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether model is optional (fallback to rule-based)"
+          }
+        },
+        "required": ["name", "file", "format", "sha256", "size_bytes", "type"],
+        "additionalProperties": false
+      }
+    },
+
+    "indices": {
+      "type": "array",
+      "description": "Index artifacts (HNSW, FAISS, etc.)",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": ["sentence", "paragraph", "document"],
+            "description": "Hierarchical level this index serves"
+          },
+          "file": {
+            "type": "string",
+            "description": "Relative path to index file",
+            "examples": ["indexes/sent.hnsw", "indexes/doc.faiss"]
+          },
+          "index_type": {
+            "type": "string",
+            "enum": ["HNSW", "FAISS", "BRUTE_FORCE"],
+            "description": "Index algorithm"
+          },
+          "vector_dim": {
+            "type": "integer",
+            "enum": [384, 768],
+            "description": "Vector dimensionality"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 hash of index file"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "File size in bytes"
+          },
+          "num_vectors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of vectors in this index"
+          },
+          "hparams": {
+            "type": "object",
+            "description": "Index hyperparameters",
+            "properties": {
+              "M": { "type": "integer", "description": "HNSW: connections per node" },
+              "efC": { "type": "integer", "description": "HNSW: ef_construction" },
+              "efSearch": { "type": "integer", "description": "HNSW: ef_search" },
+              "nlist": { "type": "integer", "description": "FAISS IVF: number of clusters" },
+              "m": { "type": "integer", "description": "FAISS PQ: number of subquantizers" },
+              "nbits": { "type": "integer", "description": "FAISS PQ: bits per subquantizer" }
+            }
+          },
+          "metric": {
+            "type": "string",
+            "enum": ["cosine", "L2", "dot"],
+            "description": "Distance/similarity metric"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Index creation timestamp"
+          }
+        },
+        "required": ["level", "file", "index_type", "vector_dim", "sha256", "size_bytes", "num_vectors"],
+        "additionalProperties": false
+      }
+    },
+
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this manifest was created"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "Creator (e.g., 'ci/release-bot', 'user@example.com')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Release description or notes"
+        }
+      },
+      "required": ["created_at"],
+      "additionalProperties": false
+    },
+
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "type": "string",
+          "enum": ["beta"],
+          "description": "Minimum API version required"
+        },
+        "vector_dim": {
+          "type": "integer",
+          "enum": [384, 768],
+          "description": "Expected vector dimensionality"
+        },
+        "min_python": {
+          "type": "string",
+          "description": "Minimum Python version",
+          "examples": ["3.9", "3.10"]
+        },
+        "max_python": {
+          "type": "string",
+          "description": "Maximum Python version (if known)"
+        }
+      },
+      "required": ["api_version", "vector_dim"],
+      "additionalProperties": false
+    },
+
+    "checksums": {
+      "type": "object",
+      "description": "Overall checksums for validation",
+      "properties": {
+        "models_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 of concatenated model checksums"
+        },
+        "indices_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 of concatenated index checksums"
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 of entire manifest (excluding this field)"
+        }
+      }
+    }
+  },
+
+  "required": ["version", "api_version", "git", "indices", "metadata", "compatibility"],
+  "additionalProperties": false
+}

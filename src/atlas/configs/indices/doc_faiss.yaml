@@ -1,0 +1,97 @@
+# Atlas β — FAISS Index Configuration (Documents)
+# Version: 0.2.0-beta
+# Description: FAISS IVF-PQ parameters for document-level indexing
+
+index_type: "FAISS"
+index_method: "IVF-PQ"
+level: "document"
+vector_dim: 384
+metric: "L2"  # L2 distance (FAISS standard)
+
+# ============================================================================
+# IVF (Inverted File Index) Parameters
+# ============================================================================
+
+ivf:
+  # nlist: Number of centroids (clusters)
+  # Rule: nlist ≈ sqrt(N) where N = total vectors
+  # For 1M docs: nlist ≈ 1000
+  # For 5M docs: nlist ≈ 2236
+  nlist: 1000  # Adjust per expected dataset size
+  
+  # nprobe: Number of clusters to search (quality vs speed tradeoff)
+  # Higher nprobe = better recall, slower
+  # Recommended: nprobe = 10-50% of nlist
+  nprobe: 100
+
+# ============================================================================
+# PQ (Product Quantization) Parameters
+# ============================================================================
+
+pq:
+  # m: Number of subquantizers (code blocks)
+  # m=16: 16 blocks of 384/16=24 dimensions each
+  # Higher m = better quality, slower
+  m: 16
+  
+  # nbits: Bits per subquantizer (codebook size = 2^nbits)
+  # nbits=8: 256 codewords per block (standard)
+  # nbits=4: 16 codewords (faster, lower quality)
+  nbits: 8
+
+# ============================================================================
+# Vector Normalization
+# ============================================================================
+
+normalization:
+  type: "L2"
+  clip_value: 10.0
+  tolerance: 1e-6
+
+# ============================================================================
+# Index Building
+# ============================================================================
+
+building:
+  # training_size: Vectors used to train IVF/PQ codebooks
+  # Recommended: 10-100 * nlist
+  training_size: 100000
+  
+  # batch_size: Training batch size
+  batch_size: 10000
+  
+  # num_threads: Parallel building
+  num_threads: 8
+  
+  # max_memory_gb: Memory limit
+  max_memory_gb: 32
+
+# ============================================================================
+# Index Storage & Snapshots
+# ============================================================================
+
+storage:
+  format: "faiss_direct"  # Direct binary format
+  path_template: "indexes/doc.faiss"
+  checkpoint_interval: 100000
+  compression: "none"
+
+# ============================================================================
+# Performance Targets
+# ============================================================================
+
+performance:
+  # Document search can be faster due to quantization
+  target_latency_p50_ms: 30
+  target_latency_p95_ms: 80
+  target_recall_at_k: 0.90
+  k: 10
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  created_at: "2025-10-27T00:00:00Z"
+  version: "0.2.0-beta"
+  notes: "Production IVF-PQ for document-level retrieval with quality/speed balance"

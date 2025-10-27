@@ -1,0 +1,74 @@
+# Atlas β — HNSW Index Configuration (Paragraphs)
+# Version: 0.2.0-beta
+# Description: HNSW parameters for paragraph-level indexing
+
+index_type: "HNSW"
+level: "paragraph"
+vector_dim: 384
+metric: "cosine"
+
+# ============================================================================
+# HNSW Hyperparameters
+# ============================================================================
+
+hnsw:
+  # M: Denser graph for paragraphs (more connections)
+  # Paragraphs have broader semantic scope, need richer connectivity
+  M: 48
+  
+  # ef_construction: Larger for better quality at paragraph level
+  ef_construction: 400
+  
+  # ef_search: Larger search window for paragraph queries
+  ef_search: 96
+  
+  # seed: Reproducibility
+  seed: 42
+
+# ============================================================================
+# Vector Normalization
+# ============================================================================
+
+normalization:
+  type: "L2"
+  clip_value: 10.0
+  tolerance: 1e-6
+
+# ============================================================================
+# Index Building
+# ============================================================================
+
+building:
+  batch_size: 5000  # Fewer vectors per batch at paragraph level
+  num_threads: 8
+  max_memory_gb: 24  # More memory for denser graph
+
+# ============================================================================
+# Index Storage & Snapshots
+# ============================================================================
+
+storage:
+  format: "hnsw_hnswlib"
+  path_template: "indexes/para.hnsw"
+  checkpoint_interval: 50000
+  compression: "none"
+
+# ============================================================================
+# Performance Targets
+# ============================================================================
+
+performance:
+  # Paragraph queries may be slower due to denser graph
+  target_latency_p50_ms: 25
+  target_latency_p95_ms: 60
+  target_recall_at_k: 0.93
+  k: 10
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  created_at: "2025-10-27T00:00:00Z"
+  version: "0.2.0-beta"
+  notes: "Denser HNSW for paragraph-level semantic search with broader recall"

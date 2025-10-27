@@ -1,0 +1,85 @@
+# Atlas β — HNSW Index Configuration (Sentences)
+# Version: 0.2.0-beta
+# Description: HNSW parameters for sentence-level indexing
+
+index_type: "HNSW"
+level: "sentence"
+vector_dim: 384
+metric: "cosine"  # similarity = dot (L2-normalized vectors)
+
+# ============================================================================
+# HNSW Hyperparameters
+# ============================================================================
+
+hnsw:
+  # M: Maximum number of connections per node
+  # Higher M = more memory, denser graph, better recall
+  M: 32
+  
+  # ef_construction: Size of dynamic list used during construction
+  # Higher = slower construction, better quality, more memory
+  ef_construction: 200
+  
+  # ef_search: Size of dynamic list used for search
+  # Higher = slower search, better recall
+  ef_search: 64
+  
+  # seed: Random seed for reproducibility
+  seed: 42
+
+# ============================================================================
+# Vector Normalization
+# ============================================================================
+
+normalization:
+  type: "L2"
+  clip_value: 10.0  # Clip outliers before norm
+  tolerance: 1e-6
+
+# ============================================================================
+# Index Building
+# ============================================================================
+
+building:
+  # batch_size: Vectors processed per batch during construction
+  batch_size: 10000
+  
+  # num_threads: Parallel threads for building
+  num_threads: 8
+  
+  # max_memory_gb: Maximum memory during construction
+  max_memory_gb: 16
+
+# ============================================================================
+# Index Storage & Snapshots
+# ============================================================================
+
+storage:
+  format: "hnsw_hnswlib"  # hnswlib format
+  path_template: "indexes/sent.hnsw"
+  checkpoint_interval: 100000  # Save every N vectors
+  compression: "none"  # or "zstd" (optional)
+
+# ============================================================================
+# Performance Targets
+# ============================================================================
+
+performance:
+  # target_latency_p50_ms: Median query latency goal
+  target_latency_p50_ms: 15
+  
+  # target_latency_p95_ms: 95th percentile query latency goal
+  target_latency_p95_ms: 35
+  
+  # target_recall_at_k: Recall@k on test set
+  target_recall_at_k: 0.95
+  k: 10
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  created_at: "2025-10-27T00:00:00Z"
+  version: "0.2.0-beta"
+  notes: "Production-grade HNSW for sentence-level semantic search"

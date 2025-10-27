@@ -1,0 +1,347 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Atlas β API Schemas",
+  "description": "JSON Schema for all REST API request/response bodies",
+  "version": "0.2.0-beta",
+
+  "definitions": {
+    "EncodeRequest": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Text to encode into 5D space",
+          "minLength": 1,
+          "maxLength": 100000
+        },
+        "lang": {
+          "type": "string",
+          "description": "Language code (e.g., 'ru', 'en')",
+          "default": "ru",
+          "enum": ["ru", "en", "de", "fr", "es"]
+        },
+        "normalize": {
+          "type": "boolean",
+          "description": "L2-normalize the output embedding",
+          "default": true
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+
+    "EncodeResponse": {
+      "type": "object",
+      "properties": {
+        "embedding_5d": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 5,
+          "maxItems": 5,
+          "description": "5D semantic vector (normalized)"
+        },
+        "dimensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 5,
+          "maxItems": 5,
+          "description": "Dimension names (A, B, C, D, E)",
+          "default": ["A", "B", "C", "D", "E"]
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "len": { "type": "integer", "description": "Input text length" },
+            "lang": { "type": "string", "description": "Detected/used language" },
+            "normalized": { "type": "boolean", "description": "Whether L2-normalized" }
+          },
+          "required": ["len", "lang", "normalized"]
+        }
+      },
+      "required": ["embedding_5d", "dimensions", "meta"],
+      "additionalProperties": false
+    },
+
+    "DecodeRequest": {
+      "type": "object",
+      "properties": {
+        "embedding_5d": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 5,
+          "maxItems": 5,
+          "description": "5D semantic vector to decode"
+        },
+        "top_k": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 5,
+          "description": "Top-k reconstructions to return"
+        }
+      },
+      "required": ["embedding_5d"],
+      "additionalProperties": false
+    },
+
+    "DecodeResponse": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Reconstructed text (best match)"
+        },
+        "rationale": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Per-dimension explanations (e.g., 'dimA↑ => abstraction')"
+        },
+        "path": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hierarchical path in semantic space"
+        }
+      },
+      "required": ["text", "rationale", "path"],
+      "additionalProperties": false
+    },
+
+    "ExplainRequest": {
+      "type": "object",
+      "properties": {
+        "embedding_5d": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 5,
+          "maxItems": 5,
+          "description": "5D vector to explain"
+        }
+      },
+      "required": ["embedding_5d"],
+      "additionalProperties": false
+    },
+
+    "ExplainResponse": {
+      "type": "object",
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Dimension name (A-E)" },
+              "weight": { "type": "number", "minimum": 0, "maximum": 1, "description": "Normalized weight" },
+              "examples": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Example concepts for this dimension"
+              }
+            },
+            "required": ["name", "weight", "examples"]
+          },
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "normalization": {
+          "type": "string",
+          "enum": ["L2", "L1", "none"],
+          "description": "Normalization method applied"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional interpretation notes"
+        }
+      },
+      "required": ["dimensions", "normalization"],
+      "additionalProperties": false
+    },
+
+    "EncodeHierarchicalRequest": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Full text to encode hierarchically",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "levels": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["token", "sentence", "paragraph", "document"] },
+          "description": "Hierarchical levels to encode",
+          "default": ["sentence", "paragraph", "document"]
+        },
+        "proj_dim": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 768,
+          "default": 384,
+          "description": "Projection dimension for intermediate levels"
+        },
+        "normalize": {
+          "type": "boolean",
+          "default": true,
+          "description": "L2-normalize all outputs"
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+
+    "EncodeHierarchicalResponse": {
+      "type": "object",
+      "properties": {
+        "levels": {
+          "type": "object",
+          "description": "Per-level embeddings (arrays of vectors)",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" }
+            }
+          }
+        },
+        "masks": {
+          "type": "object",
+          "description": "Hierarchical masks (token->sent->para->doc)",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "integer", "enum": [0, 1] }
+            }
+          }
+        }
+      },
+      "required": ["levels", "masks"],
+      "additionalProperties": false
+    },
+
+    "SearchRequest": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query text",
+          "minLength": 1,
+          "maxLength": 100000
+        },
+        "levels": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["sentence", "paragraph", "document"] },
+          "description": "Levels to search across",
+          "default": ["sentence", "paragraph", "document"]
+        },
+        "top_k": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 7,
+          "description": "Top-k results per level"
+        },
+        "fuse": {
+          "type": "string",
+          "enum": ["RRF", "max_sim"],
+          "default": "RRF",
+          "description": "Fusion method: RRF (Reciprocal Rank Fusion) or max similarity"
+        }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    },
+
+    "SearchHit": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string", "enum": ["sentence", "paragraph", "document"] },
+        "id": { "type": "string", "description": "Hierarchical ID (e.g., 's:123', 'p:45', 'd:1')" },
+        "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fused score" },
+        "trace": {
+          "type": "object",
+          "description": "Debug trace (ranks, similarities, etc.)",
+          "additionalProperties": {}
+        }
+      },
+      "required": ["level", "id", "score"]
+    },
+
+    "SearchResponse": {
+      "type": "object",
+      "properties": {
+        "hits": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/SearchHit" },
+          "description": "Ranked results after fusion"
+        },
+        "debug": {
+          "type": "object",
+          "properties": {
+            "per_level": {
+              "type": "object",
+              "description": "Per-level scores before fusion",
+              "additionalProperties": { "type": "array", "items": { "type": "number" } }
+            },
+            "fuse_weights": {
+              "type": "object",
+              "description": "Fusion parameters (e.g., RRF_k=60)",
+              "additionalProperties": {}
+            }
+          }
+        },
+        "query_time_ms": {
+          "type": "number",
+          "description": "Total query time"
+        }
+      },
+      "required": ["hits"],
+      "additionalProperties": false
+    },
+
+    "HealthResponse": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["healthy"] },
+        "version": { "type": "string", "description": "API version" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "version", "timestamp"],
+      "additionalProperties": false
+    },
+
+    "ReadyResponse": {
+      "type": "object",
+      "properties": {
+        "ready": { "type": "boolean", "description": "All checks passed" },
+        "checks": {
+          "type": "object",
+          "properties": {
+            "indices_loaded": { "type": "boolean" },
+            "manifest_valid": { "type": "boolean" },
+            "memory_available": { "type": "boolean" }
+          },
+          "required": ["indices_loaded", "manifest_valid", "memory_available"]
+        }
+      },
+      "required": ["ready", "checks"],
+      "additionalProperties": false
+    },
+
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": { "type": "string", "description": "Error code" },
+        "message": { "type": "string", "description": "Human-readable message" },
+        "details": {
+          "type": "object",
+          "description": "Additional error details",
+          "additionalProperties": {}
+        },
+        "trace_id": { "type": "string", "description": "Request trace ID" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["error", "message", "timestamp"],
+      "additionalProperties": false
+    }
+  }
+}

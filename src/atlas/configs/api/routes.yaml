@@ -1,0 +1,167 @@
+# Atlas β — API Routes Configuration
+# Version: 0.2.0-beta
+# Description: RESTful endpoints specification
+
+api_version: "v1"
+base_path: "/api/v1"
+default_timeout_ms: 30000
+
+# ============================================================================
+# 5D Encoding/Decoding Endpoints
+# ============================================================================
+
+encode:
+  method: "POST"
+  path: "/encode"
+  description: "Encode text into 5D semantic space"
+  input: "EncodeRequest"
+  output: "EncodeResponse"
+  timeout_ms: 5000
+  cache_ttl_s: 3600
+
+decode:
+  method: "POST"
+  path: "/decode"
+  description: "Decode 5D vector back to text with rationale"
+  input: "DecodeRequest"
+  output: "DecodeResponse"
+  timeout_ms: 3000
+  cache_ttl_s: 1800
+
+explain:
+  method: "POST"
+  path: "/explain"
+  description: "Explain 5D dimensions and their semantic meaning"
+  input: "ExplainRequest"
+  output: "ExplainResponse"
+  timeout_ms: 2000
+  cache_ttl_s: 7200
+
+# ============================================================================
+# Hierarchical Encoding/Decoding Endpoints
+# ============================================================================
+
+encode_h:
+  method: "POST"
+  path: "/encode_h"
+  description: "Encode text with hierarchical levels (token/sent/para/doc)"
+  input: "EncodeHierarchicalRequest"
+  output: "EncodeHierarchicalResponse"
+  timeout_ms: 8000
+  cache_ttl_s: 3600
+  neural_optional: true  # S1 encoder optional
+
+decode_h:
+  method: "POST"
+  path: "/decode_h"
+  description: "Decode hierarchical vectors back to text"
+  input: "DecodeHierarchicalRequest"
+  output: "DecodeHierarchicalResponse"
+  timeout_ms: 5000
+  cache_ttl_s: 1800
+
+manipulate_h:
+  method: "POST"
+  path: "/manipulate_h"
+  description: "Operations on hierarchical vectors (union/intersect/exclude/route)"
+  input: "ManipulateHierarchicalRequest"
+  output: "ManipulateHierarchicalResponse"
+  timeout_ms: 4000
+  cache_ttl_s: 300
+
+# ============================================================================
+# Search Endpoint (Main — through FAB)
+# ============================================================================
+
+search:
+  method: "POST"
+  path: "/search"
+  description: "Multi-level semantic search with RRF/max_sim fusion"
+  input: "SearchRequest"
+  output: "SearchResponse"
+  timeout_ms: 5000
+  cache_ttl_s: 0  # No cache for search
+  fab_routing: true
+  fusion_methods:
+    - "RRF"  # Reciprocal Rank Fusion (k=60)
+    - "max_sim"  # Max similarity
+
+# ============================================================================
+# Observability Endpoints
+# ============================================================================
+
+health:
+  method: "GET"
+  path: "/health"
+  description: "Liveness probe"
+  output: "HealthResponse"
+  timeout_ms: 1000
+  cache_ttl_s: 0
+
+ready:
+  method: "GET"
+  path: "/ready"
+  description: "Readiness probe (indices loaded, MANIFEST valid)"
+  output: "ReadyResponse"
+  timeout_ms: 2000
+  cache_ttl_s: 0
+
+metrics:
+  method: "GET"
+  path: "/metrics"
+  description: "Prometheus metrics export"
+  output: "text/plain"
+  timeout_ms: 1000
+  cache_ttl_s: 0
+  format: "prometheus"
+
+# ============================================================================
+# Admin Endpoints (Protected)
+# ============================================================================
+
+admin_indices_rollback:
+  method: "POST"
+  path: "/admin/indices/rollback"
+  description: "Rollback indices to previous manifest"
+  query_params:
+    - name: "to"
+      type: "string"
+      required: true
+      description: "Manifest version to rollback to"
+  output: "RollbackResponse"
+  timeout_ms: 10000
+  cache_ttl_s: 0
+  auth_required: true
+
+admin_indices_switch:
+  method: "POST"
+  path: "/admin/indices/switch"
+  description: "Atomically switch active indices"
+  input: "SwitchIndicesRequest"
+  output: "SwitchIndicesResponse"
+  timeout_ms: 5000
+  cache_ttl_s: 0
+  auth_required: true
+
+# ============================================================================
+# Global Settings
+# ============================================================================
+
+defaults:
+  normalize: true
+  lang: "ru"
+  trace_level: "INFO"  # DEBUG|INFO|WARN
+  rate_limit_qps: 1000
+  rate_limit_concurrent: 100
+
+cors:
+  allow_origins: ["*"]
+  allow_methods: ["GET", "POST", "OPTIONS"]
+  allow_headers: ["Content-Type", "Authorization", "X-Trace-ID"]
+  max_age: 3600
+
+logging:
+  level: "INFO"
+  format: "json"
+  include_trace_id: true
+  include_query_id: true
