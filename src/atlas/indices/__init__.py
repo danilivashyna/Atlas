@@ -7,9 +7,12 @@ Index builders and managers for hierarchical semantic search.
 - MANIFEST: SHA256 validation
 """
 
+from .faiss_builder import FAISSIndexBuilder, create_faiss_index
 from .hnsw_builder import HNSWIndexBuilder, create_hnsw_index
 
 __all__ = [
     "HNSWIndexBuilder",
     "create_hnsw_index",
+    "FAISSIndexBuilder",
+    "create_faiss_index",
 ]
