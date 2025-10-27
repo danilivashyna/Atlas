@@ -93,6 +93,42 @@ make smoke         # python scripts/smoke_test_wiring.py
 ## Готово к push на GitHub ✨
 
 All commits are clean, documented, and follow the architectural guidelines.
+
+---
+
+## 🚀 Начать разработку E1-E3
+
+**Читай:** [`docs/E1_E3_ROADMAP.md`](docs/E1_E3_ROADMAP.md)
+
+**Первая задача:** `feature/E1-1-pydantic-schemas` (150–200 строк)
+
+```bash
+# Чекаут ветку
+git checkout -b feature/E1-1-pydantic-schemas
+
+# Создать модуль
+touch src/atlas/api/schemas.py
+
+# После реализации
+make validate
+make smoke
+pytest tests/test_api_schemas.py
+
+# Commit и PR
+git commit -m "feat(api): Add Pydantic schemas from configs/api/schemas.json"
+# Create PR on GitHub
+```
+
+**CI автоматически запустит:**
+- ✅ `make validate` (конфиги OK)
+- ✅ `make smoke` (smoke tests OK)
+- ✅ `pytest tests/` (unit tests OK)
+
+После approval + CI pass → merge в main автоматически.
+
+---
+
+**STATUS:** 🟢 **READY FOR GITHUB PUSH + E1 START**
 - Priority matrix (high/medium/low)
 - Примерно 2-4 недели работы
 
