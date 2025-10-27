@@ -1,0 +1,391 @@
+# Atlas Homeostasis Policies
+# Автоматические политики реагирования на метрики E3
+
+version: "1.0"
+enabled: true
+
+# Глобальные лимиты
+global_limits:
+  max_actions_per_hour: 10
+  max_concurrent_actions: 2
+  default_cooldown_minutes: 15
+  dry_run: false  # true для симуляции без выполнения
+
+# Политики (выполняются в порядке приоритета)
+policies:
+  # ========================================
+  # КРИТИЧЕСКИЕ (приоритет: critical)
+  # ========================================
+  
+  - name: critical_coherence_sent_to_para
+    description: "Критическое падение согласованности sentence→paragraph"
+    priority: critical
+    enabled: true
+    
+    trigger:
+      metric: h_coherence_sent_to_para
+      operator: "<"
+      threshold: 0.70  # ниже warning порога (0.78 target, 0.70 warning)
+      duration_minutes: 10  # должно держаться 10 минут
+      
+    action:
+      type: rebuild_shard
+      params:
+        level: sentence
+        target: auto  # автоопределение проблемного шарда
+        snapshot_before: true
+        verify_after: true
+      max_per_window: 2  # не более 2 rebuild в час
+      cooldown_minutes: 30
+      
+    success_criteria:
+      metric: h_coherence_sent_to_para
+      improvement_min: 0.05  # должна улучшиться минимум на 0.05
+      
+  - name: critical_coherence_para_to_doc
+    description: "Критическое падение согласованности paragraph→document"
+    priority: critical
+    enabled: true
+    
+    trigger:
+      metric: h_coherence_para_to_doc
+      operator: "<"
+      threshold: 0.72  # ниже warning порога (0.80 target, 0.72 warning)
+      duration_minutes: 10
+      
+    action:
+      type: rebuild_shard
+      params:
+        level: paragraph
+        target: auto
+        snapshot_before: true
+        verify_after: true
+      max_per_window: 2
+      cooldown_minutes: 30
+      
+    success_criteria:
+      metric: h_coherence_para_to_doc
+      improvement_min: 0.05
+      
+  - name: critical_stability_drift
+    description: "Критический дрифт стабильности (высокий шум)"
+    priority: critical
+    enabled: true
+    
+    trigger:
+      metric: h_stability_drift_noise
+      operator: ">"
+      threshold: 0.12  # выше критического порога (0.08 target, 0.12 critical)
+      duration_minutes: 15
+      
+    action:
+      type: quarantine_docs
+      params:
+        target: top_100_drift
+        reason: critical_drift
+        snapshot_before: true
+      max_per_window: 1
+      cooldown_minutes: 60
+      
+    success_criteria:
+      metric: h_stability_drift_noise
+      improvement_min: 0.03
+      
+  # ========================================
+  # ВЫСОКИЙ ПРИОРИТЕТ (приоритет: high)
+  # ========================================
+  
+  - name: high_coherence_degradation
+    description: "Деградация согласованности (ниже target, выше warning)"
+    priority: high
+    enabled: true
+    
+    trigger:
+      # Композитное правило: sent→para ИЛИ para→doc ниже target
+      composite: or
+      conditions:
+        - metric: h_coherence_sent_to_para
+          operator: "<"
+          threshold: 0.78  # target порог
+          duration_minutes: 15
+        - metric: h_coherence_para_to_doc
+          operator: "<"
+          threshold: 0.80  # target порог
+          duration_minutes: 15
+          
+    action:
+      type: reembed_batch
+      params:
+        target: top_50_low_coherence
+        level: auto  # определить из метрики
+        snapshot_before: true
+        verify_after: true
+      max_per_window: 3
+      cooldown_minutes: 20
+      
+    success_criteria:
+      # Хотя бы одна метрика должна улучшиться
+      composite: or
+      conditions:
+        - metric: h_coherence_sent_to_para
+          improvement_min: 0.03
+        - metric: h_coherence_para_to_doc
+          improvement_min: 0.03
+          
+  - name: high_stability_moderate_drift
+    description: "Умеренный дрифт стабильности"
+    priority: high
+    enabled: true
+    
+    trigger:
+      metric: h_stability_drift_noise
+      operator: ">"
+      threshold: 0.08  # target порог
+      duration_minutes: 20
+      
+    action:
+      type: reembed_batch
+      params:
+        target: top_50_drift_docs
+        reason: moderate_drift
+        snapshot_before: true
+        verify_after: true
+      max_per_window: 2
+      cooldown_minutes: 30
+      
+    success_criteria:
+      metric: h_stability_drift_noise
+      improvement_min: 0.02
+      
+  # ========================================
+  # СРЕДНИЙ ПРИОРИТЕТ (приоритет: medium)
+  # ========================================
+  
+  - name: medium_search_latency_degradation
+    description: "Деградация латентности поиска"
+    priority: medium
+    enabled: true
+    
+    trigger:
+      metric: search_latency_p95_ms
+      operator: ">"
+      threshold: 100  # p95 > 100ms
+      duration_minutes: 30
+      
+    action:
+      type: tune_search_params
+      params:
+        # Для HNSW: уменьшить ef_search (компромисс точность/скорость)
+        # Для FAISS: уменьшить nprobe
+        strategy: reduce_search_depth
+        target_latency_p95_ms: 80
+        snapshot_before: true
+        rollback_if_degraded: true
+      max_per_window: 5
+      cooldown_minutes: 10
+      
+    success_criteria:
+      metric: search_latency_p95_ms
+      improvement_min: 15  # снижение минимум на 15ms
+      
+  - name: medium_index_size_bloat
+    description: "Раздутие индексов (tombstones, фрагментация)"
+    priority: medium
+    enabled: true
+    
+    trigger:
+      metric: index_fragmentation_ratio
+      operator: ">"
+      threshold: 0.3  # >30% фрагментация
+      duration_minutes: 60
+      
+    action:
+      type: defragment_index
+      params:
+        level: auto  # определить из метрики
+        compact_tombstones: true
+        snapshot_before: true
+      max_per_window: 1
+      cooldown_minutes: 120
+      
+    success_criteria:
+      metric: index_fragmentation_ratio
+      improvement_min: 0.1  # снижение минимум на 10%
+      
+  # ========================================
+  # НИЗКИЙ ПРИОРИТЕТ (приоритет: low)
+  # ========================================
+  
+  - name: low_manifest_staleness
+    description: "MANIFEST устарел (долго не обновлялся)"
+    priority: low
+    enabled: true
+    
+    trigger:
+      metric: manifest_age_hours
+      operator: ">"
+      threshold: 168  # >7 дней
+      duration_minutes: 60
+      
+    action:
+      type: regenerate_manifest
+      params:
+        reason: staleness
+        verify_integrity: true
+        atomic_switch: true
+      max_per_window: 1
+      cooldown_minutes: 1440  # 24 часа
+      
+    success_criteria:
+      metric: manifest_age_hours
+      value_max: 1  # после регенерации должен быть <1 часа
+      
+  - name: low_snapshot_age
+    description: "Снапшот устарел (давно не создавался)"
+    priority: low
+    enabled: true
+    
+    trigger:
+      metric: snapshot_age_hours
+      operator: ">"
+      threshold: 24  # >24 часа
+      duration_minutes: 30
+      
+    action:
+      type: create_snapshot
+      params:
+        reason: scheduled_backup
+        retention_count: 7  # хранить последние 7
+        verify_integrity: true
+      max_per_window: 1
+      cooldown_minutes: 1440  # 24 часа
+      
+    success_criteria:
+      metric: snapshot_age_hours
+      value_max: 1
+
+# ========================================
+# Расписания (cron-подобные триггеры)
+# ========================================
+schedules:
+  - name: nightly_consolidation
+    description: "Ночная консолидация (сон системы)"
+    cron: "0 3 * * *"  # 03:00 каждый день
+    enabled: true
+    
+    actions:
+      - type: defragment_index
+        params:
+          level: all
+          compact_tombstones: true
+          optimize_structure: true
+          
+      - type: compress_vectors
+        params:
+          strategy: quantize_quiet_dims
+          dimensions_to_quantize: 128
+          bits_per_dim: 4
+          
+      - type: recalibrate_thresholds
+        params:
+          metrics:
+            - h_coherence_sent_to_para
+            - h_coherence_para_to_doc
+            - h_stability_drift_noise
+          lookback_days: 7
+          percentile: 0.95
+          
+      - type: aggregate_metrics
+        params:
+          window_hours: 24
+          output: data/metrics/daily_aggregates.jsonl
+          
+    timeout_minutes: 30
+    on_failure: alert_ops
+    
+  - name: weekly_full_snapshot
+    description: "Еженедельный полный снапшот"
+    cron: "0 2 * * 0"  # 02:00 каждое воскресенье
+    enabled: true
+    
+    actions:
+      - type: create_snapshot
+        params:
+          reason: weekly_backup
+          full: true
+          retention_count: 4  # хранить последние 4 недели
+          verify_integrity: true
+          
+    timeout_minutes: 60
+    on_failure: alert_ops
+
+# ========================================
+# Анти-флаппинг и безопасность
+# ========================================
+safety:
+  # Минимальное время между действиями одного типа
+  min_action_interval_minutes:
+    rebuild_shard: 15
+    reembed_batch: 10
+    tune_search_params: 5
+    quarantine_docs: 30
+    defragment_index: 60
+    regenerate_manifest: 60
+    create_snapshot: 30
+    
+  # Максимальное количество действий в окно
+  max_actions_per_window:
+    rebuild_shard: 3
+    reembed_batch: 5
+    tune_search_params: 10
+    quarantine_docs: 2
+    defragment_index: 2
+    regenerate_manifest: 1
+    create_snapshot: 2
+    
+  # Требовать подтверждение для критических действий
+  require_confirmation:
+    - rebuild_shard
+    - quarantine_docs
+    - defragment_index
+    
+  # Автоматический откат при деградации
+  auto_rollback_on_degradation: true
+  
+  # Максимальное время выполнения действия (timeout)
+  action_timeout_minutes:
+    rebuild_shard: 10
+    reembed_batch: 5
+    tune_search_params: 1
+    quarantine_docs: 2
+    defragment_index: 15
+    regenerate_manifest: 2
+    create_snapshot: 10
+
+# ========================================
+# Уведомления и алерты
+# ========================================
+alerts:
+  enabled: true
+  
+  # Алерт при критической деградации
+  on_critical_trigger:
+    - type: log
+      level: critical
+    - type: metrics
+      increment: atlas_critical_alerts_total
+      
+  # Алерт при неудачном действии
+  on_action_failure:
+    - type: log
+      level: error
+    - type: metrics
+      increment: atlas_action_failures_total{action="${action_type}"}
+      
+  # Алерт при успешной починке
+  on_repair_success:
+    - type: log
+      level: info
+    - type: metrics
+      increment: atlas_repair_success_total{action="${action_type}"}
+      set: atlas_repair_success_ratio
