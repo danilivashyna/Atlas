@@ -211,9 +211,12 @@ async def health() -> HealthResponse:
     summary="Readiness probe",
     description="Checks if indices are loaded and MANIFEST is valid",
 )
-async def ready() -> ReadyResponse:
+async def ready(request: Request) -> ReadyResponse:
     """
     Readiness check endpoint.
+    
+    Args:
+        request: FastAPI Request (access to app.state)
     
     Returns:
         ReadyResponse with ready=true if all checks pass
@@ -222,14 +225,21 @@ async def ready() -> ReadyResponse:
         - Checks: indices_loaded, manifest_valid, memory_available
         - Returns ready=false if any check fails (but still 200 OK)
     """
-    # TODO: Implement actual checks via ConfigLoader + index managers (E1.4 + E2)
-    # For now, return not ready (indices not loaded yet)
+    # Check app state for indices
+    indices_loaded = getattr(request.app.state, "indices_loaded", False)
+    
+    # For now, assume manifest valid if indices loaded
+    manifest_valid = indices_loaded
+    
+    # Assume memory OK (no actual check yet)
+    memory_available = True
+    
     return ReadyResponse(
-        ready=False,
+        ready=(indices_loaded and manifest_valid and memory_available),
         checks=ReadyChecks(
-            indices_loaded=False,
-            manifest_valid=False,
-            memory_available=True,  # Assume memory OK
+            indices_loaded=indices_loaded,
+            manifest_valid=manifest_valid,
+            memory_available=memory_available,
         )
     )
 

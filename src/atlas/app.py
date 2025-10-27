@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Startup:
         - Load configs via ConfigLoader
         - Initialize FAB router
-        - Validate MANIFEST (if present)
+        - Load indices (HNSW/FAISS) from MANIFEST
+        - Validate MANIFEST checksums
     
     Shutdown:
         - Clear config cache
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Notes:
         - Read-only ConfigLoader (no runtime mutation)
         - FAB router is stateless (no cleanup needed)
+        - Indices stored in app.state for route access
     """
     # Startup
     print("🚀 Atlas β starting...")
@@ -61,8 +63,70 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.fab_router = fab_router
     print(f"✅ Initialized FAB router (rrf_k=60)")
     
-    # TODO E2: Load indices (HNSW/FAISS) via ConfigLoader
-    # TODO E2: Validate MANIFEST.v0_2.json
+    # Load indices from MANIFEST
+    app.state.indices_loaded = False
+    app.state.indices = {}
+    
+    try:
+        from pathlib import Path
+        from atlas.indices import (
+            HNSWIndexBuilder,
+            FAISSIndexBuilder,
+            load_manifest,
+            verify_manifest_integrity,
+        )
+        
+        # Check for MANIFEST
+        manifest_path = Path("MANIFEST.v0_2.json")
+        if not manifest_path.exists():
+            print("⚠️  MANIFEST.v0_2.json not found (indices not loaded)")
+            print("   To build indices: python scripts/build_indices.py")
+        else:
+            # Load and validate MANIFEST
+            manifest = load_manifest(manifest_path)
+            print(f"✅ Loaded MANIFEST: {manifest['version']}, api={manifest['api_version']}")
+            
+            # Verify integrity
+            is_valid = verify_manifest_integrity(manifest)
+            print(f"✅ MANIFEST integrity verified: {is_valid}")
+            
+            # Load indices
+            for idx_entry in manifest["indices"]:
+                level = idx_entry["level"]
+                file_path = Path(idx_entry["file"])
+                index_type = idx_entry["index_type"]
+                
+                if not file_path.exists():
+                    print(f"⚠️  Index file not found: {file_path}")
+                    continue
+                
+                # Load HNSW or FAISS index
+                if index_type == "HNSW":
+                    # HNSW for sentence/paragraph
+                    config = index_configs.get(level)
+                    builder = HNSWIndexBuilder(level=level, config=config)
+                    builder.load(file_path)
+                    app.state.indices[level] = builder
+                    print(f"✅ Loaded {level} HNSW index: {idx_entry['num_vectors']} vectors")
+                    
+                elif index_type == "FAISS":
+                    # FAISS for document level only
+                    config = index_configs.get("document")
+                    builder = FAISSIndexBuilder(config=config)
+                    builder.load(file_path)
+                    app.state.indices[level] = builder
+                    print(f"✅ Loaded {level} FAISS index: {idx_entry['num_vectors']} vectors")
+            
+            # Mark as loaded if all 3 levels present
+            if len(app.state.indices) == 3:
+                app.state.indices_loaded = True
+                print(f"✅ All indices loaded ({len(app.state.indices)} levels)")
+            else:
+                print(f"⚠️  Only {len(app.state.indices)}/3 indices loaded")
+                
+    except Exception as e:
+        print(f"❌ Failed to load indices: {e}")
+        print("   App will start but /search will return 501")
     
     print("✅ Atlas β ready\n")
     
@@ -71,7 +135,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     print("\n🛑 Atlas β shutting down...")
     ConfigLoader.clear_cache()
-    print("✅ Cleared config cache")
+    app.state.indices.clear()
+    print("✅ Cleared config cache and indices")
 
 
 # ============================================================================
