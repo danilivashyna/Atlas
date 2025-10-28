@@ -1,7 +1,7 @@
-# ✅ E1 + E2 + E3 Complete — Ready for Merge
+# ✅ E1 + E2 + E3 + E4 Complete — Ready for Merge
 
-**Дата:** 27 октября 2025  
-**Ветка:** `feature/E2-1-index-builders`  
+**Дата:** 28 октября 2025  
+**Ветка:** `feature/E4-1-homeostasis`  
 **Статус:** ✅ **READY FOR MERGE → main**
 
 ---
@@ -11,13 +11,17 @@
 ### ✅ E1 (API & Contracts) — MERGED
 **Commits:** 8 | **Lines:** 1023
 
-### ✅ E2 (Index Builders + MANIFEST) — READY
+### ✅ E2 (Index Builders + MANIFEST) — MERGED
 **Commits:** 5 | **Lines:** 1084
 
-### ✅ E3 (H-metrics Framework) — READY
+### ✅ E3 (H-metrics Framework) — MERGED
 **Commits:** 4 | **Lines:** 564
 
-**Total:** 9 commits | 1648 lines (E2 + E3)
+### ✅ E4 (Homeostasis Loop) — READY ⭐
+**Commits:** 10 | **Lines:** 6521  
+**Tests:** 112/112 passing | **SLO:** Rollback <1s (target ≤30s)
+
+**Total:** 10 commits | 6521 lines (E4)
 
 ---
 
@@ -84,19 +88,54 @@
 
 ---
 
-## ✅ E1.1 Pydantic schemas
-- File: `src/atlas/api/schemas.py` (329 lines)
-- Commit: `d6227c2`
-- Status: ✅ TESTED
+## 🔄 E4 Details (Homeostasis Loop) — **NEW** ⭐
 
-### ✅ E1.2 FastAPI routes
-- File: `src/atlas/api/routes.py` (306 lines)
-- Commit: `2e26450`
-- Status: ✅ TESTED (/health works)
+### ✅ E4.1 Policy Engine (18 tests ✅)
+- File: `src/atlas/homeostasis/policy.py` (851 lines)
+- Commit: `b14a090`
+- Features: YAML policies, 7 default rules, trigger evaluation
 
-### ✅ E1.3 FAB router
-- File: `src/atlas/router/fab.py` (239 lines)
-- Commit: `cc67085`
+### ✅ E4.2 Decision Engine (11 tests ✅)
+- File: `src/atlas/homeostasis/decision.py` (977 lines)
+- Commit: `4551c59`
+- Features: Anti-flapping (300s), rate limiting (5/hour)
+
+### ✅ E4.3 Action Adapters (16 tests ✅)
+- File: `src/atlas/homeostasis/actions.py` (580 lines)
+- Commit: `beeb34c`
+- Features: 6 action types, dry-run mode, stubs
+
+### ✅ E4.5 Audit Logger (13 tests ✅)
+- File: `src/atlas/homeostasis/audit.py` (767 lines)
+- Commit: `146fa9f`
+- Features: JSONL WAL, event types, query filtering
+
+### ✅ E4.4 Snapshot & Rollback (14 tests ✅)
+- File: `src/atlas/homeostasis/snapshot.py` (485 lines)
+- Commit: `33ac42c`
+- **SLO:** Rollback <1s (target ≤30s) ✅
+- Features: SHA256 verification, retention policies
+
+### ✅ E4.8 Homeostasis Metrics (7 tests ✅)
+- File: `src/atlas/metrics/homeostasis.py` (196 lines)
+- Commit: `f751755`
+- Features: Prometheus export, 4 metrics (decisions, actions, success ratio, snapshot age)
+
+### ✅ E4.7 API Routes + Integration (20 tests ✅)
+- Files: `src/atlas/api/homeostasis_routes.py` (299 lines), `homeostasis_stubs.py` (317 lines)
+- Commits: `32b776e`, `8fac509`
+- Routes: 5 endpoints (policies/test, actions, audit, snapshots, rollback)
+- Manual Tests: ✅ 3/3 passing (curl verified)
+
+### ✅ E4.6 Sleep & Consolidation (13 tests ✅)
+- File: `src/atlas/homeostasis/sleep.py` (360 lines)
+- Commit: `1469e08`
+- Features: Defrag, compression, threshold recalibration
+
+### ✅ E4 Validation Report
+- File: `E4_GA_VALIDATION_REPORT.md` (full report)
+- Status: ✅ **112/112 tests passing, GA READY**
+
 ---
 
 ## 📦 E1 Details (API & Contracts) — MERGED
@@ -121,64 +160,129 @@
 - Commit: `1c2ee79`
 - Status: ✅ TESTED (TestClient OK)
 
-
 ---
 
 ## 📋 Merge Checklist
 
 ### Code Quality
-- [x] All production code committed (E2: 1084 lines, E3: 564 lines)
-- [x] All tests passing (E2: MANIFEST ✅, index loading ✅; E3: metrics ✅)
-- [x] Lint clean (ruff, mypy)
-- [x] Documentation complete (E2_COMPLETION_SUMMARY.md, E3_COMPLETION_SUMMARY.md)
+- [x] All production code committed (E4: 6521 lines)
+- [x] All tests passing (E4: 112/112 ✅)
+- [x] Lint clean (2 minor deprecation warnings, non-blocking)
+- [x] Documentation complete (E4_GA_VALIDATION_REPORT.md)
 
-### E2 Acceptance Criteria
-- [x] HNSW builder: M=32, ef_construction=200, deterministic ✅
-- [x] FAISS builder: IVF-PQ, nlist=1000, m=16, nbits=8 ✅
-- [x] MANIFEST generator: git metadata, SHA256, JSON Schema ✅
-- [x] Index loading: app.state.indices, /ready endpoint ✅
-
-### E3 Acceptance Criteria
-- [x] H-Coherence: sent→para ≥0.78, para→doc ≥0.80 (actual: 0.9987, 0.9948) ✅
-- [x] H-Stability: max_drift ≤0.08 (actual: 0.0000 @ 3% noise) ✅
-- [x] Metrics export: Prometheus format, 10 metrics ✅
+### E4 Acceptance Criteria
+- [x] Policy Engine: 7 default policies, YAML loading ✅
+- [x] Decision Engine: Anti-flapping (300s), rate limiting (5/hour) ✅
+- [x] Action Adapters: 6 action types, dry-run mode ✅
+- [x] Audit Logger: JSONL WAL, query filtering ✅
+- [x] Snapshot & Rollback: **<1s** (target ≤30s) ✅
+- [x] Homeostasis Metrics: Prometheus export, 4 metrics ✅
+- [x] API Routes: 5 endpoints, manual tests 3/3 passing ✅
+- [x] Sleep & Consolidation: Defrag, compression, threshold recalibration ✅
 
 ### Integration Verified
-- [x] E2.4 → E3: app.state.indices used by metrics ✅
-- [x] ConfigLoader → E2/E3: All params from YAML ✅
-- [x] /api/v1/metrics: H-Coherence + H-Stability exported ✅
+- [x] E4.1 (Policy) → E4.2 (Decision): Policies evaluated correctly ✅
+- [x] E4.2 (Decision) → E4.3 (Action): Actions triggered with anti-flapping ✅
+- [x] E4.3 (Action) → E4.5 (Audit): Events logged to WAL ✅
+- [x] E4.4 (Snapshot) → E4.6 (Sleep): Pre/post snapshots during consolidation ✅
+- [x] E4.7 (API) → All components: Routes functional via HTTP ✅
+- [x] E4.8 (Metrics) → Prometheus: Metrics exportable ✅
 
 ### Dependencies
-- [x] jsonschema (MANIFEST validation)
-- [x] pyyaml (config parsing)
-- [x] hnswlib (sentence/paragraph indices)
-- [x] faiss-cpu (document indices)
+- [x] prometheus_client (optional, graceful degradation) ✅
+- [x] pyyaml (policy loading) ✅
+- [x] jsonschema (audit validation) ✅
 
 ---
 
-##  Next Steps
+## 📊 Test Summary
+
+### All E4 Components (112 tests total)
+- ✅ E4.1 Policy Engine: 18 tests passing
+- ✅ E4.2 Decision Engine: 11 tests passing
+- ✅ E4.3 Action Adapters: 16 tests passing
+- ✅ E4.5 Audit Logger: 13 tests passing
+- ✅ E4.4 Snapshot & Rollback: 14 tests passing
+- ✅ E4.8 Homeostasis Metrics: 7 tests passing
+- ✅ E4.7 API Routes: 13 tests passing
+- ✅ E4.7 Integration: 7 tests passing
+- ✅ E4.6 Sleep & Consolidation: 13 tests passing
+
+**Baseline:** 178 tests passing (E1+E2+E3)  
+**Total:** **290 tests passing** (178 baseline + 112 E4)
+
+---
+
+## 🎯 SLO Validation Results
+
+| SLO Metric | Target | Measured | Status |
+|------------|--------|----------|--------|
+| Rollback Time (E4.4) | ≤30s | **<1s** | ✅ **33x faster** |
+| Tests Passing | 100% | **112/112** (100%) | ✅ PASSED |
+| API Routes | 5 functional | **5/5** tested | ✅ PASSED |
+| Manual Tests | All passing | **3/3** passing | ✅ PASSED |
+
+**Production Telemetry SLOs (deferred to post-deployment):**
+- 🟡 Repair Success Rate: ≥0.9 (pending real workloads)
+- 🟡 False Positive Rate: ≤0.1 (pending policy tuning)
+- 🟡 Time to Repair P95: ≤300s (pending action executor implementations)
+
+---
+
+## 📈 E4 Architecture (OODA Loop)
+
+```
+E3 (Observe) → h_coherence, h_stability ✅
+    ↓
+E4.1 (Orient) → YAML policies ✅
+    ↓
+E4.2 (Decide) → anti-flapping, rate-limits ✅
+    ↓
+E4.3 (Act) → rebuild_shard, reembed_batch ✅
+    ↓
+E4.5 (Reflect) → JSONL WAL ✅
+    ↓
+E4.8 (Observe) → Prometheus metrics ✅
+    ↓
+E4.4 (Safety) → snapshots + rollback ✅
+    ↓
+E4.7 (Control) → REST API ✅
+    ↓
+E4.6 (Maintenance) → nightly consolidation ✅
+```
+
+---
+
+## 🚀 Next Steps
 
 1. **Merge to main:**
    ```bash
    git checkout main
-   git merge feature/E2-1-index-builders --no-ff
+   git merge feature/E4-1-homeostasis --no-ff
    git push origin main
    ```
 
-2. **Clean up branch:**
+2. **Tag release:**
    ```bash
-   git branch -d feature/E2-1-index-builders
-   git push origin --delete feature/E2-1-index-builders
+   git tag -a v0.2.0-E4-homeostasis-ga -m "E4 Homeostasis Loop — GA Ready"
+   git push origin v0.2.0-E4-homeostasis-ga
    ```
 
-3. **Verify production state:**
-   - All tests pass on main ✅
-   - Documentation complete ✅
-   - Dependencies in requirements.txt ✅
+3. **Clean up branch:**
+   ```bash
+   git branch -d feature/E4-1-homeostasis
+   git push origin --delete feature/E4-1-homeostasis
+   ```
 
-4. **Plan E4:**
-   - Review roadmap for next epic
-   - Define E4 tasks maintaining architectural coherence
+4. **Deploy to staging:**
+   - Enable Prometheus metrics collection
+   - Monitor for 48 hours
+   - Validate production telemetry SLOs
+
+5. **Plan v0.3:**
+   - Memory Persistence (see docs/v0.3_MEMORY_PERSISTENCE.md)
+   - Replace action stubs with real implementations
+   - Policy auto-tuning based on success rates
    - Continue "dialogue" metaphor (E1=grammar, E2=vocabulary, E3=self-awareness, E4=?)
 
 ---

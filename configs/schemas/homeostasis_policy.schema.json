@@ -1,0 +1,342 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas.ai/schemas/homeostasis_policy.json",
+  "title": "Atlas Homeostasis Policy",
+  "description": "Schema for Atlas homeostasis policy configuration",
+  "type": "object",
+  "required": ["version", "enabled", "policies"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Policy schema version"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Global enable/disable switch"
+    },
+    "global_limits": {
+      "type": "object",
+      "properties": {
+        "max_actions_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "max_concurrent_actions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "default_cooldown_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440
+        },
+        "dry_run": {
+          "type": "boolean"
+        }
+      }
+    },
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/policy"
+      }
+    },
+    "schedules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/schedule"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "properties": {
+        "min_action_interval_minutes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "max_actions_per_window": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "require_confirmation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auto_rollback_on_degradation": {
+          "type": "boolean"
+        },
+        "action_timeout_minutes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "on_critical_trigger": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/alert_action"
+          }
+        },
+        "on_action_failure": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/alert_action"
+          }
+        },
+        "on_repair_success": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/alert_action"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "policy": {
+      "type": "object",
+      "required": ["name", "priority", "enabled", "trigger", "action"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "description": "Unique policy identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "trigger": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/simple_trigger"
+            },
+            {
+              "$ref": "#/definitions/composite_trigger"
+            }
+          ]
+        },
+        "action": {
+          "$ref": "#/definitions/action"
+        },
+        "success_criteria": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/simple_success_criteria"
+            },
+            {
+              "$ref": "#/definitions/composite_success_criteria"
+            }
+          ]
+        }
+      }
+    },
+    "simple_trigger": {
+      "type": "object",
+      "required": ["metric", "operator", "threshold", "duration_minutes"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "Metric name from E3 or system metrics"
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["<", "<=", ">", ">=", "==", "!="]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How long condition must hold before triggering"
+        }
+      }
+    },
+    "composite_trigger": {
+      "type": "object",
+      "required": ["composite", "conditions"],
+      "properties": {
+        "composite": {
+          "type": "string",
+          "enum": ["and", "or", "not"]
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/simple_trigger"
+          }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "rebuild_shard",
+            "reembed_batch",
+            "tune_search_params",
+            "quarantine_docs",
+            "defragment_index",
+            "regenerate_manifest",
+            "create_snapshot",
+            "compress_vectors",
+            "recalibrate_thresholds",
+            "aggregate_metrics"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "description": "Action-specific parameters"
+        },
+        "max_per_window": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max executions per hour"
+        },
+        "cooldown_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cooldown period after execution"
+        }
+      }
+    },
+    "simple_success_criteria": {
+      "type": "object",
+      "required": ["metric"],
+      "properties": {
+        "metric": {
+          "type": "string"
+        },
+        "improvement_min": {
+          "type": "number",
+          "description": "Minimum improvement required"
+        },
+        "value_max": {
+          "type": "number",
+          "description": "Maximum value after action"
+        },
+        "value_min": {
+          "type": "number",
+          "description": "Minimum value after action"
+        }
+      }
+    },
+    "composite_success_criteria": {
+      "type": "object",
+      "required": ["composite", "conditions"],
+      "properties": {
+        "composite": {
+          "type": "string",
+          "enum": ["and", "or"]
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/simple_success_criteria"
+          }
+        }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "required": ["name", "cron", "enabled", "actions"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "cron": {
+          "type": "string",
+          "pattern": "^(\\*|[0-5]?[0-9]|\\*/\\d+) (\\*|[01]?[0-9]|2[0-3]|\\*/\\d+) (\\*|[1-2]?[0-9]|3[01]|\\*/\\d+) (\\*|[1-9]|1[0-2]|\\*/\\d+) (\\*|[0-7]|\\*/\\d+)$",
+          "description": "Cron expression"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/action"
+          }
+        },
+        "timeout_minutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_failure": {
+          "type": "string",
+          "enum": ["alert_ops", "retry", "skip"]
+        }
+      }
+    },
+    "alert_action": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["log", "metrics", "webhook", "email"]
+        },
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warning", "error", "critical"]
+        },
+        "increment": {
+          "type": "string",
+          "description": "Prometheus counter to increment"
+        },
+        "set": {
+          "type": "string",
+          "description": "Prometheus gauge to set"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "recipients": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      }
+    }
+  }
+}
