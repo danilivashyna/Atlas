@@ -4,8 +4,10 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3 / Commercial](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-290%20passing-brightgreen.svg)]()
+[![E4 GA](https://img.shields.io/badge/E4%20Homeostasis-GA%20Ready-success.svg)]()
 [![API](https://img.shields.io/badge/API-FastAPI-009688.svg)]()
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF.svg)](.github/workflows/e4-ga-validation.yml)
 
 ---
 
@@ -57,7 +59,7 @@ Atlas распространяется под **двойной лицензие�
 
 **Примечание**: Все контрибуции автоматически распределяются под **Danil Ivashyna**, который сохраняет право перелицензирования под любыми терминами (включая коммерческие).
 
-## �📊 Статус разработки (v0.2.0a1)
+## 📊 Статус разработки (v0.2.0 — E4 GA)
 
 | Компонент | Статус | Детали |
 |-----------|--------|--------|
@@ -69,18 +71,45 @@ Atlas распространяется под **двойной лицензие�
 | ├─ Hierarchical Encoder | ✅ Готов | Иерархическое кодирование |
 | ├─ Hierarchical Decoder | ✅ Готов | Декодирование по путям |
 | └─ Hierarchical API | ✅ Готов | /encode_h, /decode_h, /manipulate_h |
-| **API** | | |
+| **API (E1)** | | |
 | ├─ REST API (FastAPI) | ✅ Готов | /encode, /decode, /explain |
 | ├─ Health checks | ✅ Готов | /health, /ready, /metrics |
 | ├─ Request validation | ✅ Готов | Pydantic models |
+| ├─ FAB Router | ✅ Готов | Grammar layer routing |
 | └─ Error handling | ✅ Готов | Graceful degradation |
+| **Index Builders (E2)** | | |
+| ├─ HNSW Builder | ✅ Готов | M=32, ef_construction=200 |
+| ├─ FAISS IVF-PQ Builder | ✅ Готов | nlist=1000, m=16, nbits=8 |
+| ├─ MANIFEST Generator | ✅ Готов | Git metadata + SHA256 |
+| └─ Index Loading | ✅ Готов | Startup integrity checks |
+| **Metrics (E3)** | | |
+| ├─ H-Coherence | ✅ Готов | sent→para ≥0.78, para→doc ≥0.80 |
+| ├─ H-Stability | ✅ Готов | drift monitoring (3%, 7%, 15% noise) |
+| └─ Prometheus Export | ✅ Готов | /api/v1/metrics endpoint |
+| **Homeostasis (E4)** ⭐ **NEW** | | |
+| ├─ E4.1 Policy Engine | ✅ GA Ready | 7 YAML policies, 18 tests |
+| ├─ E4.2 Decision Engine | ✅ GA Ready | Anti-flapping, rate limiting, 11 tests |
+| ├─ E4.3 Action Adapters | ✅ GA Ready | 6 action types, dry-run mode, 16 tests |
+| ├─ E4.5 Audit Logger | ✅ GA Ready | JSONL WAL, query filters, 13 tests |
+| ├─ E4.4 Snapshot & Rollback | ✅ GA Ready | <1s rollback (≤30s SLO), 14 tests |
+| ├─ E4.8 Homeostasis Metrics | ✅ GA Ready | Prometheus export, 7 tests |
+| ├─ E4.7 API Routes | ✅ GA Ready | 5 endpoints, 20 tests (13+7) |
+| └─ E4.6 Sleep & Consolidation | ✅ GA Ready | Defrag, compression, 13 tests |
+| └─ E4.6 Sleep & Consolidation | ✅ GA Ready | Defrag, compression, 13 tests |
 | **Testing** | | |
-| ├─ Unit tests | ✅ 50 тестов | Encoder, decoder, space, hierarchical |
+| ├─ Unit tests | ✅ 290 тестов | E1-E4 full coverage |
+| ├─ E4 Test Suite | ✅ 112 тестов | Homeostasis components (100% pass) |
 | ├─ Golden samples | ✅ 16 тестов | Регрессионные тесты |
 | ├─ API tests | ✅ 20 тестов | Integration tests |
-| └─ Coverage | ✅ > 80% | Основной функционал |
+| └─ Coverage | ✅ > 80% | Основной функционал + E4 |
+| **CI/CD** | | |
+| ├─ E4 GA Validation | ✅ Готов | GitHub Actions workflow |
+| ├─ SLO Monitoring | ✅ Готов | Automated compliance checks |
+| └─ Coverage Reports | ✅ Готов | Codecov integration |
 | **Документация** | | |
 | ├─ README | ✅ Готов | Основная документация |
+| ├─ E4 GA Validation Report | ✅ Готов | 112 tests, SLO compliance |
+| ├─ PUSH_READY | ✅ Готов | Merge checklist E1-E4 |
 | ├─ CONTRIBUTING | ✅ Готов | Гайд для контрибуторов |
 | ├─ MODEL_CARD | ✅ Готов | Описание модели |
 | ├─ NFR | ✅ Готов | Нефункц. требования |
@@ -91,17 +120,47 @@ Atlas распространяется под **двойной лицензие�
 | ├─ Docker | ✅ Готов | Dockerfile + compose |
 | ├─ CLI | ✅ Готов | atlas command |
 | └─ Python package | ✅ Готов | pip install |
-| **Запланировано (v0.2+)** | | |
+| **Запланировано (v0.3+)** | | |
+| ├─ Memory Persistence | 🔄 В плане | PostgreSQL + Redis |
+| ├─ Action Executor Impl | 🔄 В плане | Real rebuild/reembed |
+| ├─ Policy Auto-Tuning | 🔄 В плане | Success rate feedback |
 | ├─ Neural encoder | 🔄 В плане | BERT-based |
 | ├─ Neural decoder | 🔄 В плане | Transformer |
 | ├─ Disentanglement training | 🔄 В плане | β-TC-VAE |
-| ├─ Hierarchical losses | 🔄 В плане | Ortho/sparsity/router |
-| ├─ Hierarchical metrics | 🔄 В плане | H-Coherence, H-Stability |
-| ├─ Distillation | 🔄 В плане | Teacher→Hierarchical |
-| ├─ Metrics implementation | 🔄 В плане | Coherence, stability |
 | └─ Human evaluation | 🔄 В плане | Аннотация |
 
 **Легенда**: ✅ Готово | 🔄 В разработке | ⏳ Запланировано
+
+### 🎯 E4 Homeostasis (OODA Loop)
+
+Atlas теперь обладает **автономным циклом самокоррекции**:
+
+```
+E3 (Observe)     → Метрики: h_coherence, h_stability
+    ↓
+E4.1 (Orient)    → Политики: 7 YAML триггеров
+    ↓
+E4.2 (Decide)    → Решения: anti-flapping, rate-limits
+    ↓
+E4.3 (Act)       → Действия: rebuild_shard, reembed_batch
+    ↓
+E4.5 (Reflect)   → Аудит: JSONL WAL
+    ↓
+E4.8 (Monitor)   → Prometheus: 4 метрики homeostasis
+    ↓
+E4.4 (Safety)    → Snapshots: rollback <1s (≤30s SLO)
+    ↓
+E4.7 (Control)   → API: 5 endpoints для ручного управления
+    ↓
+E4.6 (Maintain)  → Sleep: nightly defrag + compression
+```
+
+**SLO Validation:**
+- ✅ Rollback Time: <1s (target ≤30s) — **33x faster**
+- ✅ Tests: 112/112 passing (100%)
+- ✅ API Routes: 5/5 functional
+
+[Подробный отчёт GA Validation →](E4_GA_VALIDATION_REPORT.md)
 
 ## ⚡ Quick Start
 
