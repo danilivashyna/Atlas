@@ -260,6 +260,15 @@ try:
 except Exception as e:
     logger.warning("Homeostasis routes not registered: %s", e)
 
+# FAB integration routes (v0.1 Shadow Mode)
+try:
+    from atlas.api.fab_routes import create_fab_router
+
+    app.include_router(create_fab_router())
+    logger.info("FAB routes registered (v0.1 Shadow mode)")
+except Exception as e:
+    logger.warning("FAB routes not registered: %s", e)
+
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,81 @@
+AURIS — Atlas × FAB Integration Plan (v0.1)
+2025-10-28 11:45 UTC
+
+Executive Summary
+Atlas E4 (Homeostasis) is GA-ready and functionally complete (E4.1–E4.8). The system can dock with FAB as the runtime
+context/memory substrate and control plane. This plan defines the minimal contracts, routes, lifecycle hooks and a
+phased rollout to integrate FAB as the Fractal Associative Bus (global + stream windows) above the E1–E4 stack.
+
+Readiness (Go/No-Go)
+• API: 5/5 routes live (/homeostasis/*), Prometheus metrics exposed.
+• Safety: Snapshot & Rollback (<1s), WAL/Audit, deterministic thresholds.
+• Ops: CI GA Validation workflow, SLO gates, artifacts retention.
+• Gaps (addressed in plan):
+  - FAB context window contracts (global vs stream) — formalize JSON schema.
+  - Backpressure & rate limits for /context/push.
+  - Policy map (E4.1) to FAB events (coherence/stability → actions).
+
+Contracts
+1) FAB Windows
+• Global window (FABᴳ): system-wide z-space; immutable handle in a session step.
+• Stream window (FABˢ): per-flow localized context; refresh on step change.
+Schema (JSON, v0.1):
+{
+  "fab_version": "0.1",
+  "window": {"type": "global|stream", "id": "UUID", "ts": "ISO8601"},
+  "tokens": [{"t":"str","w":0.0,"role":"system|user|agent"}],
+  "vectors": [{"id":"node|edge|doc", "dim":384, "norm":1.0, "ts":"ISO8601"}],
+  "links": [{"src":"id","dst":"id","w":0.0,"kind":"semantic|temporal|causal"}],
+  "meta": {"topic":"str","locale":"str","coherence":0.0,"stability":0.0}
+}
+
+2) Atlas ↔ FAB API (REST, v0.1)
+POST /api/v1/fab/context/push
+• Body: { window, tokens, vectors, links, meta, run_id?, dry_run? }
+• Effects: validate → index (E2) → update FAB caches → emit metrics
+• Returns: { accepted:boolean, backpressure:{ok|slow|reject}, reasons[], ids[] }
+
+GET  /api/v1/fab/context/pull?window=global|stream&id=...
+• Returns merged view with E2 indices and live FAB overlays.
+
+POST /api/v1/fab/decide
+• Body: { metrics:E3, policies?:override, run_id? }
+• Uses E4.1/E4.2; returns proposed actions and confidence.
+
+POST /api/v1/fab/act/{action_type}
+• Proxy to E4.3 with unified schema; default dry_run=true.
+
+Lifecycle Hooks
+• before_step: freeze FABˢ; export to Atlas metrics for E3 snapshot.
+• after_step: publish drift/coherence deltas; optional repair if thresholds crossed.
+• sleep_cycle (nightly): call E4.6 consolidation; rotate FAB caches; snapshot (E4.4).
+
+Backpressure & QoS
+• Token-bucket per actor and per window.
+• Backoff headers: X-FAB-Backpressure: slow|reject; Retry-After seconds.
+• Rate policy tied to E4.2 anti-flapping to avoid oscillations.
+
+Policy Map (E4.1)
+• coherence_degradation(sp<p1 or pd<p2) → rebuild_shard(stream), tune_search_params
+• stability_drift(drift>p3) → reembed_batch(topk), quarantine_docs(if noisy sources)
+• snapshot_age>t → snapshot + manifest_rotate
+
+Phased Rollout
+1) Shadow (read-only): enable /fab/context/push dry_run, collect metrics.
+2) Mirroring: write-through to FAB caches + Atlas indices; auto-repair disabled.
+3) Cutover: enable actions with rate limits; SLO monitors armed; rollback guard.
+
+Risks & Mitigations
+• Over-admission → backpressure + per-tenant quotas.
+• False positive repairs → dual-signal confirmation + WAL review.
+• Schema drift → JSON schema versioning + manifest-first rule.
+
+Test Matrix
+• Unit: schema validation, backpressure, policy triggers.
+• Integration: push/pull windows, act/rollback, sleep cycle cohesion.
+• SLO: repair_p95, rollback_time, throughput under backpressure.
+
+Next Steps
+• Implement /fab/context/* routes (v0.1) and wire to E4.1/E4.3.
+• Add FAB metrics: fab_push_qps, fab_backpressure_ratio, fab_window_size.
+• Ship “Dark Mode” Shadow stage on staging; verify GA gates.
