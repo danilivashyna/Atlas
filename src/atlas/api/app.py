@@ -243,6 +243,23 @@ try:
 except Exception as e:
     logger.warning("Reticulum routes not registered: %s", e)
 
+# Homeostasis routes (E4.7 control plane)
+try:
+    from atlas.api.homeostasis_routes import create_homeostasis_router
+    from atlas.api.homeostasis_stubs import create_homeostasis_stubs
+
+    # Initialize stub dependencies in app.state
+    stubs = create_homeostasis_stubs()
+    app.state.policy_engine = stubs["policy_engine"]
+    app.state.action_executor = stubs["action_executor"]
+    app.state.audit_logger = stubs["audit_logger"]
+    app.state.snapshot_manager = stubs["snapshot_manager"]
+
+    app.include_router(create_homeostasis_router())
+    logger.info("Homeostasis routes registered (using stubs)")
+except Exception as e:
+    logger.warning("Homeostasis routes not registered: %s", e)
+
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
     CORSMiddleware,
