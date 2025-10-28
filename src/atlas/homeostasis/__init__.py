@@ -31,6 +31,13 @@ from .policy import (
     SimpleTrigger,
     SuccessCriteria,
 )
+from .snapshot import (
+    SnapshotManager,
+    SnapshotMetadata,
+    SnapshotStatus,
+    RollbackResult,
+    RollbackStatus,
+)
 
 __all__ = [
     # Policy Engine (E4.1)
@@ -53,6 +60,12 @@ __all__ = [
     "ActionAdapter",
     "ActionResult",
     "ActionStatus",
+    # Snapshot & Rollback (E4.4)
+    "SnapshotManager",
+    "SnapshotMetadata",
+    "SnapshotStatus",
+    "RollbackResult",
+    "RollbackStatus",
     # Audit Logger (E4.5)
     "AuditLogger",
     "AuditEvent",
