@@ -38,6 +38,7 @@ from .snapshot import (
     RollbackResult,
     RollbackStatus,
 )
+from .sleep import ConsolidationResult, SleepManager, create_sleep_manager
 
 __all__ = [
     # Policy Engine (E4.1)
@@ -70,4 +71,8 @@ __all__ = [
     "AuditLogger",
     "AuditEvent",
     "AuditEventType",
+    # Sleep & Consolidation (E4.6)
+    "SleepManager",
+    "ConsolidationResult",
+    "create_sleep_manager",
 ]
