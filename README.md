@@ -4,8 +4,9 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3 / Commercial](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-290%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-301%20passing-brightgreen.svg)]()
 [![E4 GA](https://img.shields.io/badge/E4%20Homeostasis-GA%20Ready-success.svg)]()
+[![FAB v0.1](https://img.shields.io/badge/FAB-v0.1%20Shadow-blue.svg)]()
 [![API](https://img.shields.io/badge/API-FastAPI-009688.svg)]()
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF.svg)](.github/workflows/e4-ga-validation.yml)
 
@@ -95,10 +96,19 @@ Atlas распространяется под **двойной лицензие�
 | ├─ E4.8 Homeostasis Metrics | ✅ GA Ready | Prometheus export, 7 tests |
 | ├─ E4.7 API Routes | ✅ GA Ready | 5 endpoints, 20 tests (13+7) |
 | └─ E4.6 Sleep & Consolidation | ✅ GA Ready | Defrag, compression, 13 tests |
-| └─ E4.6 Sleep & Consolidation | ✅ GA Ready | Defrag, compression, 13 tests |
+| **FAB Integration (v0.1)** ⭐ **NEW** | | |
+| ├─ Shadow Mode | ✅ Active | Read-only, dry_run=true, validation |
+| ├─ FAB Schemas | ✅ Готов | 13 Pydantic models, JSON Schema v0.1 |
+| ├─ FAB Routes | ✅ Готов | 4 REST endpoints (/push, /pull, /decide, /act) |
+| ├─ Backpressure | ✅ Готов | Token bucket (ok/slow/reject) |
+| ├─ FAB Tests | ✅ 11 тестов | All Shadow mode validation passing |
+| ├─ E4 Integration | ✅ Готов | Policy decisions, action proxies |
+| ├─ Mirroring Mode | 🔄 Planned | Write-through to FAB cache + E2 indices |
+| └─ Cutover Mode | ⏳ Planned | Enable actions with SLO monitors |
 | **Testing** | | |
-| ├─ Unit tests | ✅ 290 тестов | E1-E4 full coverage |
+| ├─ Unit tests | ✅ 301 тестов | E1-E4 + FAB full coverage |
 | ├─ E4 Test Suite | ✅ 112 тестов | Homeostasis components (100% pass) |
+| ├─ FAB Test Suite | ✅ 11 тестов | Shadow mode validation (100% pass) |
 | ├─ Golden samples | ✅ 16 тестов | Регрессионные тесты |
 | ├─ API tests | ✅ 20 тестов | Integration tests |
 | └─ Coverage | ✅ > 80% | Основной функционал + E4 |
@@ -161,6 +171,82 @@ E4.6 (Maintain)  → Sleep: nightly defrag + compression
 - ✅ API Routes: 5/5 functional
 
 [Подробный отчёт GA Validation →](E4_GA_VALIDATION_REPORT.md)
+
+---
+
+### 🔗 FAB Integration v0.1 (Shadow Mode)
+
+**FAB (Fractal Associative Bus)** — контекстная шина над E1-E4, объединяющая глобальные (FABᴳ) и стрим-окна (FABˢ) для унифицированного управления контекстом.
+
+**Phased Rollout (текущее состояние: Phase 1 - Shadow):**
+
+```
+Phase 1 (Shadow) ← СЕЙЧАС
+    ↓
+    ├─ dry_run=true (все маршруты)
+    ├─ Валидация JSON Schema v0.1
+    ├─ Backpressure monitoring (ok|slow|reject)
+    └─ Metrics collection (готовность к Phase 2)
+    
+Phase 2 (Mirroring) ← СЛЕДУЮЩИЙ
+    ↓
+    ├─ Write-through to FAB cache
+    ├─ E2 index updates (HNSW/FAISS)
+    └─ Merged context view (E2 + FAB)
+    
+Phase 3 (Cutover) ← БУДУЩЕЕ
+    ↓
+    ├─ Enable E4 actions
+    ├─ Rate limits + SLO guards
+    └─ Full production traffic
+```
+
+**FAB REST API (v0.1):**
+
+| Endpoint | Method | Purpose | Status |
+|----------|--------|---------|--------|
+| `/api/v1/fab/context/push` | POST | Push context window (backpressure: ok/slow/reject) | ✅ Shadow |
+| `/api/v1/fab/context/pull` | GET | Pull merged context (E2 + FAB overlays) | ✅ Shadow (empty) |
+| `/api/v1/fab/decide` | POST | E4.1/E4.2 policy decisions | ✅ Shadow (mock) |
+| `/api/v1/fab/act/{action_type}` | POST | E4.3 action execution | ✅ Shadow (dry_run) |
+
+**JSON Schema v0.1:**
+```json
+{
+  "fab_version": "0.1",
+  "window": {"type": "global|stream", "id": "uuid", "ts": "ISO8601"},
+  "tokens": [{"t": "text", "w": 0.0-1.0, "role": "system|user|agent"}],
+  "vectors": [{"id": "str", "dim": 384, "norm": 1.0, "ts": "ISO8601"}],
+  "links": [{"src": "id", "dst": "id", "w": 0.0-1.0, "kind": "semantic|temporal|causal"}],
+  "meta": {
+    "topic": "str",
+    "locale": "en-US",
+    "coherence": 0.0-1.0,  // E3 metric
+    "stability": 0.0-1.0   // E3 metric
+  }
+}
+```
+
+**Backpressure/QoS:**
+- **OK**: <2000 tokens → `X-FAB-Backpressure: ok`
+- **SLOW**: 2000-5000 tokens → `X-FAB-Backpressure: slow`
+- **REJECT**: >5000 tokens → `X-FAB-Backpressure: reject`, `Retry-After: 60`
+
+**E4 Integration:**
+- E4.1 Policy → FAB events (coherence_degradation, stability_drift)
+- E4.2 Decision → Anti-flapping (300s cooldown)
+- E4.3 Actions → FAB-triggered repairs (rebuild_shard, reembed_batch)
+- E4.4 Snapshots → FAB cache rotation + manifest
+- E4.6 Sleep → Nightly FAB cleanup + consolidation
+
+**Tests:**
+- ✅ 11/11 tests passing (1.28s)
+- Coverage: Push (4), Pull (2), Decide (2), Act (2), Integration (1)
+- Validation: Backpressure thresholds, dry_run enforcement, schema compliance
+
+[Полная спецификация FAB →](docs/AURIS_FAB_Integration_Plan_v0.1.txt)
+
+---
 
 ## ⚡ Quick Start
 
