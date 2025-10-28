@@ -17,6 +17,10 @@ from .h_stability import (
     add_gaussian_noise,
     compute_h_stability,
 )
+from .homeostasis import (
+    HomeostasisMetrics,
+    get_homeostasis_metrics,
+)
 from .metrics_hier import h_coherence_stub, h_stability_stub
 
 __all__ = [
@@ -27,6 +31,8 @@ __all__ = [
     "HStabilityResult",
     "add_gaussian_noise",
     "compute_h_stability",
+    "HomeostasisMetrics",
+    "get_homeostasis_metrics",
     "h_coherence_stub",
     "h_stability_stub",
 ]
