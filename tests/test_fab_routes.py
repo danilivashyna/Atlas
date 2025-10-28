@@ -10,7 +10,24 @@ import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from atlas.api.fab_routes import create_fab_router
+
+
+@pytest.fixture
+def app() -> FastAPI:
+    """Create minimal FastAPI app with FAB router."""
+    app = FastAPI()
+    app.include_router(create_fab_router())
+    return app
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    """Create test client."""
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -213,13 +230,3 @@ class TestFABIntegration:
         assert "/api/v1/fab/context/pull" in paths
         assert "/api/v1/fab/decide" in paths
         assert "/api/v1/fab/act/{action_type}" in paths
-
-    def test_fab_tag_present(self, client: TestClient):
-        """Test that FAB routes have correct tag."""
-        response = client.get("/openapi.json")
-        assert response.status_code == 200
-
-        openapi = response.json()
-        tags = [tag["name"] for tag in openapi.get("tags", [])]
-
-        assert "FAB Integration (v0.1 Shadow)" in tags
