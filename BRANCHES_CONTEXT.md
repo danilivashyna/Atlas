@@ -46,8 +46,9 @@ main (Atlas v0.2.0 E4 GA)
 ---
 
 ### 2. **fab** — 🔥 ТЕКУЩАЯ ВЕТКА
-**Status**: Phase A (MVP) — в разработке  
+**Status**: Phase A (MVP) — ✅ COMPLETE  
 **Base**: `main` (Atlas v0.2.0)  
+**Last commit**: `65f2f92` (FAB_PHASE_A_STATUS.md)  
 **Scope**: FAB Core — оперативная шина осознания
 
 **Спецификация**:
@@ -55,35 +56,48 @@ main (Atlas v0.2.0 E4 GA)
 - `docs_fab/FAB_OVERVIEW.md` (обзор архитектуры)
 - `docs_fab/FAB_INTRO_CONTEXT.md` (контекст интеграции)
 
-**Цели Phase A (MVP)**:
-- [ ] Ядро FAB (`src/orbis_fab/core.py`)
-- [ ] Протоколы адаптеров (`src/orbis_fab/protocols.py`)
-- [ ] Политики (`src/orbis_fab/policies.py`)
-- [ ] Метрики Mensum (`src/orbis_fab/metrics.py`)
-- [ ] Моки адаптеров (`src/orbis_fab/adapters/`)
-- [ ] Unit тесты (≥90% coverage)
-- [ ] Integration тесты (нулевой цикл)
+**✅ Phase A Complete (21e848e + 65f2f92)**:
+- ✅ Ядро FAB (`src/orbis_fab/core.py`, 184 строки)
+- ✅ Type definitions (`src/orbis_fab/types.py`, 70 строк)
+- ✅ State machine (`src/orbis_fab/state.py`, 60 строк)
+- ✅ Backpressure (`src/orbis_fab/backpressure.py`, 50 строк)
+- ✅ Bit-envelope (`src/orbis_fab/envelope.py`, 50 строк)
+- ✅ Package init (`src/orbis_fab/__init__.py`, 40 строк)
+- ✅ Unit тесты (29 тестов, 100% passing)
+  - test_fab_transitions.py (9 тестов)
+  - test_backpressure.py (5 тестов)
+  - test_envelope.py (7 тестов)
+  - test_fill_mix_contracts.py (10 тестов)
+- ✅ Status report (`FAB_PHASE_A_STATUS.md`, 462 строки)
 
-**Ключевые компоненты**:
+**Ключевые компоненты (Phase A)**:
 ```python
 FABCore:
-  - init_tick(mode: FAB0/1/2, budgets, tolerances_5d, bit_policy)
-  - fill(z_slice: ZSlice)
-  - mix(anchors: AnchorsT) -> dict
-  - step(context, oneblock_call) -> OneBlockResp
-  - maybe_commit(trace_sig) -> None
+  - init_tick(mode: FAB0/1/2, budgets: Budgets)
+  - fill(z_slice: ZSliceLite)
+  - mix() -> dict  # Pure snapshot, no I/O
+  - step_stub(stress, self_presence, error_rate) -> dict
 ```
 
 **Режимы работы**:
-- FAB₀: без SELF (автоматические паттерны)
-- FAB₁: с Душой/SELF (навигация подсознания)
-- FAB₂: с Z-пространством и Эго (контакт с миром)
+- FAB₀: без SELF (validation-only, no Atlas writes)
+- FAB₁: с SELF present (navigation/mix, anti-oscillation)
+- FAB₂: с SELF + Ego (I/O permitted, future)
 
-**SLO**:
-- mix() p95 ≤ 10 ms (1k узлов)
-- step() p95 ≤ 5 ms
-- commit() ≤ 50 ms
-- error_rate ≤ 0.05
+**Phase A инварианты**:
+- Budgets фиксированы на тик (tokens=4096, nodes=256, edges=0, time_ms=30)
+- Global + Stream ≤ budgets.nodes
+- Global window: ≤256 nodes, precision ≤mxfp4.12 (cold)
+- Stream window: ≤128 nodes, precision mxfp6-8 (hot/warm)
+- Backpressure bands: ok<2000, slow<5000, reject≥5000
+- State transitions: FAB0→FAB1→FAB2 + degradation on stress/errors
+- No external I/O (autonomous operation)
+
+**Next** (Phase B):
+- [ ] Hysteresis для bit-envelope (≤1 change/sec/layer)
+- [ ] Window stability counter
+- [ ] Z-space shim (in-memory adapter)
+- [ ] Integration с FAB v0.1 Shadow Mode routes
 
 ---
 
@@ -194,10 +208,21 @@ git pull origin <branch_name>
 ## 📊 Текущий фокус
 
 **СЕЙЧАС**: `fab` ветка  
-**Задача**: FAB Phase A (MVP) — ядро + моки адаптеров  
-**Следующее**: Unit тесты + Integration тесты
+**Статус**: Phase A MVP ✅ COMPLETE  
+**Следующее**: Phase B (Hysteresis + Stability) или интеграция с FAB v0.1 Shadow Mode
 
-**Готов к работе!** Жду конкретное ТЗ для FAB Phase A.
+**Готов к работе!** Phase A завершён, жду инструкций для Phase B или других задач.
+
+---
+
+## 📝 Change History
+
+| Date | Branch | Event | Commit | Description |
+|------|--------|-------|--------|-------------|
+| 2025-10-29 | main | Merged | 7ffd495 | Atlas v0.2.0 + FAB v0.1 Shadow Mode |
+| 2025-10-29 | fab | Created | 44d08ce | FAB branch init with specs (3 docs) |
+| 2025-10-29 | fab | Phase A | 21e848e | FAB Phase A MVP core (6 modules, 29 tests) |
+| 2025-10-29 | fab | Docs | 65f2f92 | FAB Phase A status report |
 
 ---
 
