@@ -13,7 +13,7 @@ Invariants:
 """
 
 from enum import Enum
-from typing import TypedDict, Literal, Sequence
+from typing import TypedDict, Literal, Sequence, NotRequired
 
 
 # FAB State Machine Modes
@@ -32,6 +32,7 @@ class ZNode(TypedDict):
     """Minimal node representation from Z-space"""
     id: str          # Node identifier
     score: float     # Relevance score [0.0, 1.0]
+    vec: NotRequired[list[float]]  # Optional: embedding for vec-based MMR (Phase 2)
 
 
 class ZEdge(TypedDict):
