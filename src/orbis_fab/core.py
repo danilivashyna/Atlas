@@ -151,6 +151,10 @@ class FABCore:
         
         # Diagnostics (B.5)
         self.diag = Diagnostics()
+        
+        # Phase 2: Z-Space diagnostics (PR#2)
+        self.z_last_latency_ms: float = 0.0
+        self.z_last_diversity_gain: float = 0.0
     
     def init_tick(self, *, mode: FabMode, budgets: Budgets) -> None:
         """Initialize tick with fixed budgets
@@ -223,7 +227,12 @@ class FABCore:
         
         This preserves Phase A/B/C+ behavior for backward compatibility.
         Used when selector='fab' (default).
+        
+        Phase 2 PR#2: Resets Z-Space diagnostics (not used in FAB mode)
         """
+        # PR#2: Reset Z-Space metrics (FAB selector doesn't use them)
+        self.z_last_latency_ms = 0.0
+        self.z_last_diversity_gain = 0.0
         
         # Initialize deterministic RNG from combined seeds (B.4 + C+.5)
         # Combine: z_slice seed + session_id + current_tick
@@ -360,11 +369,20 @@ class FABCore:
             - selector='z-space': Use ZSpaceShim.select_topk_for_stream()
             - Fallback to score-based if ZSpaceShim unavailable
             - Determinism preserved via combined RNG seed
+        
+        Phase 2 PR#2: Tracks latency and diversity gain for diagnostics
         """
+        import time
+        
         # Check ZSpaceShim availability
         if not HAS_ZSPACE:
             # Graceful fallback to FAB selector
+            self.z_last_latency_ms = 0.0
+            self.z_last_diversity_gain = 0.0
             return self._fill_with_fab_selector(z)
+        
+        # Start latency tracking (PR#2)
+        t_start = time.perf_counter()
         
         # Initialize deterministic RNG from combined seeds
         z_seed = hash_to_seed(str(z.get("seed", "fab")))
@@ -376,6 +394,8 @@ class FABCore:
         if not nodes:
             self.st.stream_win.nodes = []
             self.st.global_win.nodes = []
+            self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
+            self.z_last_diversity_gain = 0.0
             return
         
         # Use ZSpaceShim for deterministic selection
@@ -452,6 +472,21 @@ class FABCore:
         
         # Global window keeps default cold precision
         self.st.global_win.precision = "mxfp4.12"
+        
+        # PR#2: Calculate diversity gain (variance of stream scores)
+        if self.st.stream_win.nodes:
+            stream_scores = [n["score"] for n in self.st.stream_win.nodes]
+            if len(stream_scores) > 1:
+                mean_score = sum(stream_scores) / len(stream_scores)
+                variance = sum((s - mean_score) ** 2 for s in stream_scores) / len(stream_scores)
+                self.z_last_diversity_gain = variance
+            else:
+                self.z_last_diversity_gain = 0.0  # Single node, no diversity
+        else:
+            self.z_last_diversity_gain = 0.0  # Empty stream
+        
+        # PR#2: Record latency
+        self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
     
     def mix(self) -> dict:
         """Return tick context snapshot (no I/O)
@@ -520,12 +555,20 @@ class FABCore:
         mmr_avg_penalty = self.mmr_rebalancer.stats.avg_penalty
         mmr_max_similarity = self.mmr_rebalancer.stats.max_similarity
         
+        # PR#2: Z-Space diagnostics
+        z_selector_used = self.selector == "z-space"
+        z_diversity_gain = self.z_last_diversity_gain
+        z_latency_ms = self.z_last_latency_ms
+        
         diag_snapshot["derived"] = {
             "changes_per_1k": changes_per_1k,
             "selected_diversity": selected_diversity,
             "mmr_nodes_penalized": mmr_nodes_penalized,
             "mmr_avg_penalty": mmr_avg_penalty,
-            "mmr_max_similarity": mmr_max_similarity
+            "mmr_max_similarity": mmr_max_similarity,
+            "z_selector_used": z_selector_used,
+            "z_diversity_gain": z_diversity_gain,
+            "z_latency_ms": z_latency_ms
         }
         
         ctx["diagnostics"] = diag_snapshot
