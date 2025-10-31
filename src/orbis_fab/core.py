@@ -42,6 +42,13 @@ from .seeding import SeededRNG, hash_to_seed, combine_seeds
 from .diagnostics import Diagnostics
 import secrets
 
+# Phase 2: Z-Space integration
+try:
+    from orbis_z import ZSpaceShim
+    HAS_ZSPACE = True
+except ImportError:
+    HAS_ZSPACE = False
+
 
 class FABCore:
     """FAB state machine orchestrator
@@ -59,9 +66,10 @@ class FABCore:
         hysteresis_dwell: int = 3,
         hysteresis_rate_limit: int = 1000,
         min_stream_for_upgrade: int = 8,
-        session_id: str | None = None
+        session_id: str | None = None,
+        selector: str = "fab"
     ):
-        """Initialize FAB with configurable envelope behavior
+        """Initialize FAB with configurable envelope behavior and node selection
         
         Args:
             hold_ms: Mode transition hold time (default: 1500ms)
@@ -75,6 +83,10 @@ class FABCore:
             session_id: Optional deterministic session ID for reproducible RNG
                 - If None, generates random session ID
                 - Use fixed value for deterministic testing/debugging
+            selector: Node selection strategy ('fab' or 'z-space', default: 'fab')
+                - 'fab': Original FAB selection (score-based sort + MMR)
+                - 'z-space': Use ZSpaceShim for deterministic top-k selection
+                - Phase 2: Enables vec-based MMR when node.vec present
         
         Example:
             # Phase A compatibility (default)
@@ -85,6 +97,9 @@ class FABCore:
             
             # Deterministic session for testing
             fab = FABCore(session_id='test-session-42')
+            
+            # Enable Z-Space selector (Phase 2)
+            fab = FABCore(selector='z-space', session_id='test-z-space')
         """
         # Phase A state
         self.st = FabState(hold_ms=hold_ms)
@@ -93,6 +108,11 @@ class FABCore:
         if envelope_mode not in ("legacy", "hysteresis"):
             raise ValueError(f"envelope_mode must be 'legacy' or 'hysteresis', got {envelope_mode}")
         self.envelope_mode = envelope_mode
+        
+        # Phase 2: Node selection strategy
+        if selector not in ("fab", "z-space"):
+            raise ValueError(f"selector must be 'fab' or 'z-space', got {selector}")
+        self.selector = selector
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -179,6 +199,7 @@ class FABCore:
         - Low scores → global (background)
         
         Phase B: Deterministic ordering, MMR diversity, hysteresis precision, diagnostics.
+        Phase 2: Selector strategy ('fab' or 'z-space' for node selection).
         
         Args:
             z: Z-slice with nodes sorted by score descending
@@ -189,6 +210,20 @@ class FABCore:
             - total nodes ≤ budgets.nodes
         """
         self.diag.inc_fills()
+        
+        # Route to selector-specific implementation
+        if self.selector == "z-space":
+            return self._fill_with_z_space(z)
+        else:
+            # Default: original FAB selection (Phase A/B/C+)
+            return self._fill_with_fab_selector(z)
+    
+    def _fill_with_fab_selector(self, z: ZSliceLite) -> None:
+        """Original FAB node selection (score-based sort + MMR).
+        
+        This preserves Phase A/B/C+ behavior for backward compatibility.
+        Used when selector='fab' (default).
+        """
         
         # Initialize deterministic RNG from combined seeds (B.4 + C+.5)
         # Combine: z_slice seed + session_id + current_tick
@@ -308,6 +343,114 @@ class FABCore:
                 self.diag.inc_envelope_changes()
         
         # Global window keeps default cold precision (mxfp4.12)
+        self.st.global_win.precision = "mxfp4.12"
+    
+    def _fill_with_z_space(self, z: ZSliceLite) -> None:
+        """Z-Space node selection (using ZSpaceShim for deterministic top-k).
+        
+        Phase 2: Uses orbis_z.ZSpaceShim for:
+        - Deterministic top-k selection
+        - Stream/global pool separation
+        - Future: vec-based MMR diversity (when node.vec present)
+        
+        Args:
+            z: Z-slice with nodes (optionally with vec embeddings)
+        
+        Behavior:
+            - selector='z-space': Use ZSpaceShim.select_topk_for_stream()
+            - Fallback to score-based if ZSpaceShim unavailable
+            - Determinism preserved via combined RNG seed
+        """
+        # Check ZSpaceShim availability
+        if not HAS_ZSPACE:
+            # Graceful fallback to FAB selector
+            return self._fill_with_fab_selector(z)
+        
+        # Initialize deterministic RNG from combined seeds
+        z_seed = hash_to_seed(str(z.get("seed", "fab")))
+        tick_seed = self.current_tick
+        combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
+        self.rng = SeededRNG(seed=combined_seed)
+        
+        nodes = list(z.get("nodes", []))
+        if not nodes:
+            self.st.stream_win.nodes = []
+            self.st.global_win.nodes = []
+            return
+        
+        # Use ZSpaceShim for deterministic selection
+        stream_cap = self.st.stream_win.cap_nodes
+        global_cap = self.st.global_win.cap_nodes
+        
+        # Convert FAB ZSliceLite to orbis_z ZSliceLite format
+        # Note: FAB uses Sequence, orbis_z uses list - cast for compatibility
+        z_compat = {
+            "nodes": list(z.get("nodes", [])),
+            "edges": list(z.get("edges", [])),
+            "quotas": z.get("quotas", {}),
+            "seed": z.get("seed", "fab"),
+            "zv": z.get("zv", "v0.1.0")
+        }
+        
+        # Select top-k for stream using shim (pass RNG's internal Random object)
+        stream_ids = ZSpaceShim.select_topk_for_stream(z_compat, k=stream_cap, rng=self.rng._rng)
+        
+        # Select top-k for global (excluding stream)
+        global_ids = ZSpaceShim.select_topk_for_global(
+            z_compat, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
+        )
+        
+        # Map IDs back to nodes (preserve full node data)
+        node_map = {n["id"]: n for n in nodes}
+        stream_nodes = [node_map[id] for id in stream_ids if id in node_map]
+        global_nodes = [node_map[id] for id in global_ids if id in node_map]
+        
+        # Populate windows
+        self.st.stream_win.nodes = stream_nodes
+        self.st.global_win.nodes = global_nodes
+        
+        # Note: MMR stats will be integrated in Phase 2.1 (vec-based diversity)
+        # For now, Z-Space uses score-based top-k (no MMR penalty)
+        
+        # Precision assignment for stream (same logic as FAB selector)
+        if self.st.stream_win.nodes:
+            stream_size = len(self.st.stream_win.nodes)
+            avg_score = sum(n["score"] for n in self.st.stream_win.nodes) / stream_size
+            old_precision = self.st.stream_win.precision
+            
+            if self.envelope_mode == "legacy":
+                # Phase A: immediate precision assignment
+                new_precision = assign_precision(avg_score)
+            else:
+                # Phase C+: hysteresis with dead band + dwell + rate limit
+                target_precision = assign_precision(avg_score)
+                
+                if stream_size < self.hys_cfg.min_stream_for_upgrade:
+                    # Tiny stream guard (same as FAB selector)
+                    if precision_level(target_precision) > precision_level(old_precision):
+                        new_precision = old_precision  # Prevent upgrade
+                    else:
+                        new_precision, self.hys_state_stream = assign_precision_hysteresis(
+                            score=avg_score,
+                            state=self.hys_state_stream,
+                            config=self.hys_cfg,
+                            current_tick=self.current_tick
+                        )
+                else:
+                    # Normal hysteresis path
+                    new_precision, self.hys_state_stream = assign_precision_hysteresis(
+                        score=avg_score,
+                        state=self.hys_state_stream,
+                        config=self.hys_cfg,
+                        current_tick=self.current_tick
+                    )
+            
+            self.st.stream_win.precision = new_precision
+            
+            if old_precision != new_precision:
+                self.diag.inc_envelope_changes()
+        
+        # Global window keeps default cold precision
         self.st.global_win.precision = "mxfp4.12"
     
     def mix(self) -> dict:
