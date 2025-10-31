@@ -343,3 +343,133 @@ def test_zspace_different_seeds_different_order():
     # Both are deterministic per seed
     assert selected_1 == ZSpaceShim.select_topk_for_stream(z_seed1, k=2)
     assert selected_2 == ZSpaceShim.select_topk_for_stream(z_seed2, k=2)
+
+
+# ---- PR#4: Vec-MMR tests ----
+
+def test_vec_mmr_improves_diversity_over_score_sort():
+    """
+    Test: Vec-MMR selects diverse clusters (vs pure score-sort).
+    
+    PR#4: When nodes have vec embeddings, MMR should mix clusters
+    instead of greedily selecting from highest-score cluster only.
+    
+    Validates:
+    - MMR selects from both clusters (high-score cluster A + cluster B)
+    - Diversity gain from cosine similarity
+    - Deterministic selection
+    """
+    import random
+    rng = random.Random(123)
+    
+    def j(x: float, y: float) -> list[float]:
+        """Slight jitter for cluster (avoids perfect orthogonality)."""
+        return [x + 0.01, y - 0.01]
+    
+    nodes = []
+    # Cluster A: high scores, vec ~ [1.0, 0.0]
+    for i in range(16):
+        nodes.append({"id": f"a{i}", "score": 0.95 - i * 0.0001, "vec": j(1.0, 0.0)})
+    
+    # Cluster B: slightly lower scores, vec ~ [0.0, 1.0] (orthogonal)
+    for i in range(16):
+        nodes.append({"id": f"b{i}", "score": 0.94 - i * 0.0001, "vec": j(0.0, 1.0)})
+    
+    z_slice = {  # type: ignore
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"tokens": 8000, "nodes": 32, "edges": 128, "time_ms": 500},
+        "seed": "vec-mmr-diversity",
+        "zv": "v0.1.0"
+    }
+    
+    ids = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng)
+    
+    # MMR should select from BOTH clusters (diversity)
+    # Pure score-sort would select a0-a7 only (all cluster A)
+    assert any(node_id.startswith("a") for node_id in ids), "Should have cluster A nodes"
+    assert any(node_id.startswith("b") for node_id in ids), "Should have cluster B nodes (diversity)"
+    
+    # Validate determinism
+    ids_2 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=random.Random(123))
+    assert ids == ids_2, "Same seed → same selection"
+
+
+def test_mixed_vec_presence_fallback_determinism():
+    """
+    Test: Mixed vec presence (some nodes have vec, others don't) → deterministic.
+    
+    PR#4: When only SOME nodes have vectors, MMR still runs but should
+    handle gracefully. Fallback to score-sort for non-vec nodes.
+    
+    Validates:
+    - Determinism with partial vec coverage
+    - No crashes with missing vec fields
+    - Same seed → same result
+    """
+    import random
+    rng1 = random.Random(7)
+    rng2 = random.Random(7)
+    
+    nodes = []
+    # First 8 nodes: have vec
+    for i in range(8):
+        nodes.append({"id": f"v{i}", "score": 0.9 - i * 0.001, "vec": [1.0, 0.0]})
+    
+    # Next 8 nodes: NO vec (fallback to score-sort)
+    for i in range(8):
+        nodes.append({"id": f"n{i}", "score": 0.89 - i * 0.001})
+    
+    z_slice = {  # type: ignore
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"tokens": 8000, "nodes": 16, "edges": 128, "time_ms": 500},
+        "seed": "mixed-vec",
+        "zv": "v0.1.0"
+    }
+    
+    ids1 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng1)
+    ids2 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng2)
+    
+    # Determinism: same seed → same result
+    assert ids1 == ids2, "Same seed should produce identical selection"
+    assert len(ids1) == 8, "Should select exactly k=8 nodes"
+
+
+def test_vec_mmr_pure_score_fallback_when_no_vecs():
+    """
+    Test: No vectors present → fallback to pure score-sort.
+    
+    PR#4: When NO nodes have vec field, MMR should gracefully
+    fall back to score-based ranking with deterministic tie-breaks.
+    
+    Validates:
+    - Correct fallback behavior (no crash)
+    - Pure score ranking (highest first)
+    - Deterministic by id (tie-breaking)
+    """
+    import random
+    rng = random.Random(99)
+    
+    # All nodes: NO vec field
+    nodes = [{"id": f"s{i}", "score": 1.0 - i * 0.001} for i in range(16)]
+    
+    z_slice = {  # type: ignore
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"tokens": 8000, "nodes": 16, "edges": 128, "time_ms": 500},
+        "seed": "no-vecs",
+        "zv": "v0.1.0"
+    }
+    
+    ids = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng)
+    
+    # Should select top-8 by score (s0 = 1.0, s1 = 0.999, ..., s7 = 0.993)
+    assert ids[0] == "s0", "Highest score should be first"
+    assert ids[-1] == "s7", "8th highest score should be last"
+    assert len(ids) == 8, "Should select exactly k=8"
+    
+    # Determinism
+    ids_2 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=random.Random(99))
+    assert ids == ids_2, "Same seed → same result"
+
