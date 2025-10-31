@@ -38,6 +38,7 @@ class HysteresisConfig:
     Each band has up/down thresholds with dead zone between them.
     dwell_time enforces stability before upgrading precision.
     rate_limit_ticks enforces ≤1 change/sec.
+    min_stream_for_upgrade prevents false upgrades on tiny samples.
     """
     # Hot band (mxfp8.0)
     hot_up: float = 0.85        # Must cross to upgrade to hot
@@ -58,6 +59,11 @@ class HysteresisConfig:
     
     # Rate limit (ticks between changes, ~1/sec)
     rate_limit_ticks: int = 1000  # Assuming 1ms/tick → 1000 ticks ≈ 1sec
+    
+    # Tiny stream guard (minimum nodes for precision upgrades)
+    # Prevents false upgrades on <8 nodes (insufficient sample)
+    # Downgrades allowed regardless of stream size
+    min_stream_for_upgrade: int = 8
 
 
 @dataclass
