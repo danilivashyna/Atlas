@@ -155,6 +155,7 @@ class FABCore:
         # Phase 2: Z-Space diagnostics (PR#2)
         self.z_last_latency_ms: float = 0.0
         self.z_last_diversity_gain: float = 0.0
+        self.z_last_baseline_div: float = 0.0  # PR#3: FAB baseline diversity for gain calc
     
     def init_tick(self, *, mode: FabMode, budgets: Budgets) -> None:
         """Initialize tick with fixed budgets
@@ -230,9 +231,10 @@ class FABCore:
         
         Phase 2 PR#2: Resets Z-Space diagnostics (not used in FAB mode)
         """
-        # PR#2: Reset Z-Space metrics (FAB selector doesn't use them)
+        # PR#2/PR#3: Reset Z-Space metrics (FAB selector doesn't use them)
         self.z_last_latency_ms = 0.0
         self.z_last_diversity_gain = 0.0
+        self.z_last_baseline_div = 0.0
         
         # Initialize deterministic RNG from combined seeds (B.4 + C+.5)
         # Combine: z_slice seed + session_id + current_tick
@@ -354,6 +356,58 @@ class FABCore:
         # Global window keeps default cold precision (mxfp4.12)
         self.st.global_win.precision = "mxfp4.12"
     
+    def _simulate_fab_stream_diversity(self, z: ZSliceLite, *, combined_seed: int, stream_cap: int) -> float:
+        """
+        PR#3 helper: локальная симуляция FAB-селектора для оценки baseline diversity
+        (дисперсия скорингов в отобранном stream), без мутаций self.st/diagnostics.
+        """
+        from .seeding import deterministic_sort
+        local_rng = SeededRNG(seed=combined_seed)
+
+        nodes = list(z.get("nodes", []))
+        if not nodes or stream_cap <= 0:
+            return 0.0
+
+        # Тот же детерминированный sort, что и в FAB-пути
+        items_with_scores = [(n, n.get("score", 0.0)) for n in nodes]
+        sorted_tuples = deterministic_sort(
+            items=items_with_scores,
+            rng=local_rng,
+            key_index=1,
+            reverse=True
+        )
+        nodes_sorted = [item for item, score in sorted_tuples]
+
+        candidates_for_stream = nodes_sorted[:min(len(nodes_sorted), stream_cap * 2)]
+
+        # Та же MMR-логика (1D-вектора по score), что и в FAB
+        if len(candidates_for_stream) > stream_cap:
+            candidates_mmr = [([float(node.get("score", 0.0))], node.get("score", 0.0)) for node in candidates_for_stream]
+            local_rebalancer = MMRRebalancer(self.mmr_cfg)
+            rebalanced_results = local_rebalancer.rebalance_batch(
+                candidates=candidates_mmr,
+                existing_nodes=[],
+                top_k=stream_cap
+            )
+            rebalanced_stream = []
+            selected_scores = {result[1] for result in rebalanced_results}
+            for node in candidates_for_stream:
+                if node.get("score", 0.0) in selected_scores:
+                    rebalanced_stream.append(node)
+                    selected_scores.remove(node.get("score", 0.0))
+                if len(rebalanced_stream) >= stream_cap:
+                    break
+        else:
+            rebalanced_stream = candidates_for_stream
+
+        scores = [n.get("score", 0.0) for n in rebalanced_stream]
+        if len(scores) <= 1:
+            return 0.0
+
+        mean_score = sum(scores) / len(scores)
+        variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
+        return variance
+    
     def _fill_with_z_space(self, z: ZSliceLite) -> None:
         """Z-Space node selection (using ZSpaceShim for deterministic top-k).
         
@@ -390,16 +444,27 @@ class FABCore:
         combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
         self.rng = SeededRNG(seed=combined_seed)
         
+        # PR#3: baseline FAB diversity для корректного gain
+        stream_cap = self.st.stream_win.cap_nodes
+        baseline_div = self._simulate_fab_stream_diversity(
+            z,
+            combined_seed=combined_seed,
+            stream_cap=stream_cap
+        )
+        self.z_last_baseline_div = baseline_div
+        
         nodes = list(z.get("nodes", []))
         if not nodes:
             self.st.stream_win.nodes = []
             self.st.global_win.nodes = []
             self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
             self.z_last_diversity_gain = 0.0
+            self.z_last_baseline_div = 0.0  # PR#3: baseline already 0.0 for empty
             return
         
         # Use ZSpaceShim for deterministic selection
-        stream_cap = self.st.stream_win.cap_nodes
+        # Note: stream_cap already calculated above for baseline
+        global_cap = self.st.global_win.cap_nodes
         global_cap = self.st.global_win.cap_nodes
         
         # Convert FAB ZSliceLite to orbis_z ZSliceLite format
@@ -473,17 +538,16 @@ class FABCore:
         # Global window keeps default cold precision
         self.st.global_win.precision = "mxfp4.12"
         
-        # PR#2: Calculate diversity gain (variance of stream scores)
-        if self.st.stream_win.nodes:
+        # PR#3: diversity gain = Z-Space variance − FAB baseline variance
+        if self.st.stream_win.nodes and len(self.st.stream_win.nodes) > 1:
             stream_scores = [n["score"] for n in self.st.stream_win.nodes]
-            if len(stream_scores) > 1:
-                mean_score = sum(stream_scores) / len(stream_scores)
-                variance = sum((s - mean_score) ** 2 for s in stream_scores) / len(stream_scores)
-                self.z_last_diversity_gain = variance
-            else:
-                self.z_last_diversity_gain = 0.0  # Single node, no diversity
+            mean_score = sum(stream_scores) / len(stream_scores)
+            z_variance = sum((s - mean_score) ** 2 for s in stream_scores) / len(stream_scores)
         else:
-            self.z_last_diversity_gain = 0.0  # Empty stream
+            z_variance = 0.0
+
+        # Клипуем отрицательные значения (разницы из-за тонкостей тай-брейка)
+        self.z_last_diversity_gain = max(0.0, z_variance - self.z_last_baseline_div)
         
         # PR#2: Record latency
         self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
@@ -567,6 +631,7 @@ class FABCore:
             "mmr_avg_penalty": mmr_avg_penalty,
             "mmr_max_similarity": mmr_max_similarity,
             "z_selector_used": z_selector_used,
+            "z_baseline_diversity": self.z_last_baseline_div,  # PR#3
             "z_diversity_gain": z_diversity_gain,
             "z_latency_ms": z_latency_ms
         }
