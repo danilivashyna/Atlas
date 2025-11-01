@@ -116,6 +116,10 @@ class MensumMetrics:
         }
         return out
 
+    def to_dict(self):
+        """Alias for to_json() for compatibility."""
+        return self.to_json()
+
 
 _metrics_singleton: MensumMetrics | None = None
 

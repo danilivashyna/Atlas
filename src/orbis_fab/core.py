@@ -41,12 +41,16 @@ from .rebalance import RebalanceConfig, MMRRebalancer
 from .seeding import SeededRNG, hash_to_seed, combine_seeds
 from .diagnostics import Diagnostics
 import secrets
+from typing import Any, cast, TYPE_CHECKING
 
 # Phase 2: Z-Space integration
+# Ensure ZSpaceShim is always defined for type-checkers; guard calls with HAS_ZSPACE at runtime.
 try:
-    from orbis_z import ZSpaceShim
+    from orbis_z import ZSpaceShim as _ZSpaceShim
+    ZSpaceShim = _ZSpaceShim  # alias for static access
     HAS_ZSPACE = True
-except ImportError:
+except Exception:  # ImportError or any initialization error
+    ZSpaceShim = cast(Any, None)  # make symbol present for Pylance/mypy
     HAS_ZSPACE = False
 
 
@@ -667,7 +671,9 @@ class FABCore:
                 "seed": z.get("seed", "fab"),
                 "zv": z.get("zv", "v0.1.0"),
             }
-            stream_ids = ZSpaceShim.select_topk_for_stream(z_compat, k=stream_cap, rng=self.rng._rng)
+            # Cast to ZSliceLite for type checkers; runtime content is identical
+            z_compat_t = cast(ZSliceLite, z_compat)
+            stream_ids = ZSpaceShim.select_topk_for_stream(z_compat_t, k=stream_cap, rng=self.rng._rng)
 
             # Timeout check after stream selection
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
@@ -675,7 +681,7 @@ class FABCore:
                 raise TimeoutError(f"z-space selection time budget exceeded after stream ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
 
             global_ids = ZSpaceShim.select_topk_for_global(
-                z_compat, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
+                z_compat_t, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
             )
             
             # Map IDs back to nodes

@@ -389,9 +389,9 @@ async def get_metrics():
 
     # Get v0.5 mensum metrics
     try:
-        from atlas.metrics.mensum import get_metrics as get_mensum_metrics
+        from atlas.metrics.mensum import metrics as get_mensum_metrics
 
-        mensum = get_mensum_metrics().to_dict()
+        mensum = get_mensum_metrics().to_json()
         # Merge mensum into response
         base_response = {
             "requests_total": metrics["requests_total"],
