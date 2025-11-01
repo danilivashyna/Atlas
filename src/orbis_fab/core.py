@@ -864,6 +864,7 @@ class FABCore:
 
         target_mode = "balanced"
         # Conservative if volatility high OR CB open OR error rate above threshold
+        # (safety-first tie-break: prefer conservative when conditions overlap)
         if vol >= self.policy_cons_vol_min or cb_open or err_rate >= self.policy_error_cons_min:
             target_mode = "conservative"
         # Aggressive if volatility low, no CB, and low error rate
@@ -881,10 +882,13 @@ class FABCore:
         if not getattr(self, "policy_enabled", False):
             return base
         if self.policy_mode == "aggressive":
-            return base * self.policy_aggr_ai_mult
-        if self.policy_mode == "conservative":
-            return base * self.policy_cons_ai_mult
-        return base
+            val = base * self.policy_aggr_ai_mult
+        elif self.policy_mode == "conservative":
+            val = base * self.policy_cons_ai_mult
+        else:
+            val = base
+        # Clamp to reasonable bounds (min=0.01ms, max=10.0ms)
+        return max(0.01, min(10.0, val))
 
     def _policy_md_factor(self) -> float:
         base = float(getattr(self, "z_md_factor", 0.5))
@@ -1138,6 +1142,7 @@ class FABCore:
             "policy_enabled": self.policy_enabled,
             "policy_mode": self.policy_mode,
             "policy_dwell_remaining": int(getattr(self, "_policy_dwell_remaining", 0)),
+            "policy_last_switch_tick": int(getattr(self, "_policy_last_switch_tick", 0)),
             "policy_effective_ai_step_ms": self._policy_ai_step_ms(),
             "policy_effective_md_factor": self._policy_md_factor(),
             "policy_effective_cb_cooldown": self._policy_cb_cooldown_ticks(),
