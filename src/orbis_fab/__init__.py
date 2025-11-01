@@ -33,8 +33,9 @@ from .core import FABCore
 from .types import FabMode, Budgets, ZSliceLite, Metrics, ZNode, ZEdge
 from .state import FabState, Window
 from .backpressure import classify_backpressure
-from .envelope import assign_precision
+from .envelope import assign_precision, precision_level
 from .diagnostics import Diagnostics
+from .api_routes import create_fab_router
 
 __version__ = "0.1.0-alpha"
 
@@ -50,5 +51,7 @@ __all__ = [
     "Window",
     "classify_backpressure",
     "assign_precision",
+    "precision_level",
     "Diagnostics",
+    "create_fab_router",
 ]

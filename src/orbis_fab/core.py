@@ -72,7 +72,13 @@ class FABCore:
         ab_ratio: float = 0.5,
         shadow_selector: str = "z-space",
         z_time_limit_ms: float = 5.0,
-        z_cb_cooldown_ticks: int = 50
+        z_cb_cooldown_ticks: int = 50,
+        z_adapt_enabled: bool = True,
+        z_target_latency_ms: float = 2.0,
+        z_limit_min_ms: float = 1.0,
+        z_limit_max_ms: float = 10.0,
+        z_ai_step_ms: float = 0.25,
+        z_md_factor: float = 0.5
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -154,6 +160,19 @@ class FABCore:
         self.z_cb_reason: str = ""  # Last CB trigger reason ('timeout'/'exception'/'unavailable')
         self.z_cb_open_count: int = 0  # Total CB opens across session
         self.z_cb_reason_counts: dict[str, int] = {"timeout": 0, "exception": 0, "unavailable": 0}
+
+        # PR#5.4: Adaptive time limit (AIMD)
+        self.z_adapt_enabled: bool = bool(z_adapt_enabled)
+        self.z_target_latency_ms: float = float(z_target_latency_ms)
+        self.z_limit_min_ms: float = float(z_limit_min_ms)
+        self.z_limit_max_ms: float = float(z_limit_max_ms)
+        self.z_ai_step_ms: float = float(z_ai_step_ms)
+        self.z_md_factor: float = float(z_md_factor)
+        # Текущее адаптивное значение (зажимаем между min/max и hard cap)
+        self.z_limit_current_ms: float = max(self.z_limit_min_ms, min(self.z_time_limit_ms, self.z_limit_max_ms))
+        from collections import deque as _deque
+        self.z_limit_history = _deque(maxlen=50)
+        self.z_limit_last_adjust: str = ""
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -494,13 +513,16 @@ class FABCore:
         
         Phase 2 PR#2: Tracks latency and diversity gain for diagnostics
         Phase 2 PR#5.3: Circuit breaker + hard time budget
+        Phase 2 PR#5.4: Adaptive time limit (AIMD)
         """
         import time
         
-        # PR#5.3: Determine effective time budget (hard cap)
+        # PR#5.4: Combine adaptive limit, hard cap, and external quota
         z_quotas = z.get("quotas", {}) or {}
         quota_ms = float(z_quotas.get("time_ms", float("inf")) or float("inf"))
-        effective_limit_ms = min(self.z_time_limit_ms, quota_ms) if self.z_time_limit_ms > 0.0 else quota_ms
+        base_limit = self.z_limit_current_ms if getattr(self, "z_adapt_enabled", False) else self.z_time_limit_ms
+        hard_cap = self.z_time_limit_ms if self.z_time_limit_ms > 0.0 else float("inf")
+        effective_limit_ms = min(base_limit, hard_cap, quota_ms)
 
         try:
             # Immediate timeout if budget is 0
@@ -609,6 +631,12 @@ class FABCore:
             self.z_last_diversity_gain = max(0.0, z_variance - self.z_last_baseline_div)
             self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
 
+            # PR#5.4: Adaptive update on success
+            try:
+                self._z_adapt("success", self.z_last_latency_ms)
+            except Exception:
+                pass
+
         except Exception as e:
             # PR#5.3.1: Determine CB reason from exception type
             if isinstance(e, TimeoutError):
@@ -620,6 +648,13 @@ class FABCore:
             
             # Open circuit breaker with reason tracking
             self._z_open_circuit_breaker(reason)
+            
+            # PR#5.4: Adaptive decrease on failure
+            try:
+                self._z_adapt(reason if reason in ("timeout", "exception", "unavailable") else "cb_open", None)
+            except Exception:
+                pass
+            
             try:
                 self.z_last_latency_ms = (time.perf_counter() - locals().get("t_start", time.perf_counter())) * 1000.0
             except Exception:
@@ -627,6 +662,48 @@ class FABCore:
             self.z_last_diversity_gain = 0.0
             self.z_last_baseline_div = 0.0
             return self._fill_with_fab_selector(z)
+    
+    def _z_adapt(self, outcome: str, observed_latency_ms: float | None = None) -> None:
+        """PR#5.4: Adaptive time limit (AIMD-like).
+        
+        Args:
+            outcome: "success", "timeout", "exception", "unavailable", "cb_open"
+            observed_latency_ms: Actual latency for success case
+        """
+        if not getattr(self, "z_adapt_enabled", False):
+            self.z_limit_last_adjust = "none"
+            return
+        
+        cur = float(getattr(self, "z_limit_current_ms", self.z_time_limit_ms))
+        new_val = cur
+        
+        if outcome == "success" and observed_latency_ms is not None:
+            # Additive Increase: if latency <= target, increase limit
+            if observed_latency_ms <= self.z_target_latency_ms:
+                new_val = cur + self.z_ai_step_ms
+                self.z_limit_last_adjust = "increase"
+            else:
+                # Latency above target, don't adjust
+                self.z_limit_last_adjust = "none"
+        else:
+            # Multiplicative Decrease: on timeout/exception/unavailable
+            new_val = cur * max(0.05, min(0.99, self.z_md_factor))
+            self.z_limit_last_adjust = "decrease"
+        
+        # Clamp to [min, max] and hard cap
+        hard_cap = self.z_time_limit_ms if self.z_time_limit_ms > 0.0 else float("inf")
+        cap_upper = min(self.z_limit_max_ms, hard_cap)
+        cap_lower = max(0.0, self.z_limit_min_ms)
+        new_val = max(cap_lower, min(cap_upper, new_val))
+        
+        if new_val != cur:
+            self.z_limit_current_ms = new_val
+        
+        # Track history for observability
+        try:
+            self.z_limit_history.append(float(self.z_limit_current_ms))
+        except Exception:
+            pass
     
     def _z_open_circuit_breaker(self, reason: str) -> None:
         """PR#5.3.1: Open circuit breaker with tracking.
@@ -834,7 +911,13 @@ class FABCore:
             "zspace_cb_cooldown_remaining": int(self.z_cb_remaining),
             "zspace_cb_reason": self.z_cb_reason,
             "zspace_cb_open_count": self.z_cb_open_count,
-            "zspace_cb_reason_counts": dict(self.z_cb_reason_counts)
+            "zspace_cb_reason_counts": dict(self.z_cb_reason_counts),
+            "z_adapt_enabled": self.z_adapt_enabled,
+            "z_limit_current_ms": self.z_limit_current_ms,
+            "z_target_latency_ms": self.z_target_latency_ms,
+            "z_limit_min_ms": self.z_limit_min_ms,
+            "z_limit_max_ms": self.z_limit_max_ms,
+            "z_limit_last_adjust": self.z_limit_last_adjust
         }
         
         ctx["diagnostics"] = diag_snapshot

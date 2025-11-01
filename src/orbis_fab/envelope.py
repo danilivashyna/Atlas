@@ -19,6 +19,39 @@ Invariants:
 - Stream window uses score-based assignment
 """
 
+# Precision level mapping (Phase C+)
+# Used for safe comparison of precision strings
+PRECISION_LEVELS = {
+    "mxfp4.12": 0,  # cold
+    "mxfp5.25": 1,  # warm-low
+    "mxfp6.0": 2,   # warm-high
+    "mxfp8.0": 3,   # hot
+}
+
+
+def precision_level(precision: str) -> int:
+    """Get numeric level for precision comparison
+    
+    Args:
+        precision: Precision format string (e.g., "mxfp6.0")
+    
+    Returns:
+        Numeric level (0-3), or -1 if unknown
+    
+    Examples:
+        >>> precision_level("mxfp8.0")
+        3
+        >>> precision_level("mxfp4.12")
+        0
+        >>> precision_level("unknown")
+        -1
+    
+    Note:
+        Use this for safe precision comparison instead of string comparison.
+        Higher level = higher precision.
+    """
+    return PRECISION_LEVELS.get(precision, -1)
+
 
 def assign_precision(score: float) -> str:
     """Assign bit-envelope precision based on node score
