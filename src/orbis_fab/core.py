@@ -70,7 +70,9 @@ class FABCore:
         selector: str = "fab",
         ab_shadow_enabled: bool = False,
         ab_ratio: float = 0.5,
-        shadow_selector: str = "z-space"
+        shadow_selector: str = "z-space",
+        z_time_limit_ms: float = 5.0,
+        z_cb_cooldown_ticks: int = 50
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -142,6 +144,11 @@ class FABCore:
         from collections import deque
         self.z_latency_window: deque = deque(maxlen=self.z_window_size)  # Last N latencies
         self.z_gain_window: deque = deque(maxlen=self.z_window_size)  # Last N gains
+
+        # PR#5.3: Z-Space circuit breaker & hard time budget
+        self.z_time_limit_ms: float = float(z_time_limit_ms)
+        self.z_cb_cooldown_ticks: int = int(z_cb_cooldown_ticks)
+        self.z_cb_remaining: int = 0  # ticks to force fallback to 'fab'
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -265,6 +272,13 @@ class FABCore:
             else:
                 self.ab_last_used = False
                 self.ab_last_arm = self.selector
+
+        # PR#5.3: If circuit breaker is open, force 'fab' for this tick
+        if getattr(self, "z_cb_remaining", 0) > 0:
+            chosen_selector = "fab"
+            self.ab_last_used = False
+            self.ab_last_arm = "fab"
+            self.z_cb_remaining -= 1
 
         if chosen_selector == "z-space":
             return self._fill_with_z_space(z)
@@ -474,95 +488,100 @@ class FABCore:
             - Determinism preserved via combined RNG seed
         
         Phase 2 PR#2: Tracks latency and diversity gain for diagnostics
+        Phase 2 PR#5.3: Circuit breaker + hard time budget
         """
         import time
         
-        # Check ZSpaceShim availability
-        if not HAS_ZSPACE:
-            # Graceful fallback to FAB selector
-            self.z_last_latency_ms = 0.0
-            self.z_last_diversity_gain = 0.0
-            return self._fill_with_fab_selector(z)
-        
-        # Start latency tracking (PR#2)
-        t_start = time.perf_counter()
-        
-        # Initialize deterministic RNG from combined seeds
-        z_seed = hash_to_seed(str(z.get("seed", "fab")))
-        tick_seed = self.current_tick
-        combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
-        self.rng = SeededRNG(seed=combined_seed)
-        
-        # PR#3: baseline FAB diversity для корректного gain
-        stream_cap = self.st.stream_win.cap_nodes
-        baseline_div = self._simulate_fab_stream_diversity(
-            z,
-            combined_seed=combined_seed,
-            stream_cap=stream_cap
-        )
-        self.z_last_baseline_div = baseline_div
-        
-        nodes = list(z.get("nodes", []))
-        if not nodes:
-            self.st.stream_win.nodes = []
-            self.st.global_win.nodes = []
-            self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
-            self.z_last_diversity_gain = 0.0
-            self.z_last_baseline_div = 0.0  # PR#3: baseline already 0.0 for empty
-            return
-        
-        # Use ZSpaceShim for deterministic selection
-        # Note: stream_cap already calculated above for baseline
-        global_cap = self.st.global_win.cap_nodes
-        global_cap = self.st.global_win.cap_nodes
-        
-        # Convert FAB ZSliceLite to orbis_z ZSliceLite format
-        # Note: FAB uses Sequence, orbis_z uses list - cast for compatibility
-        z_compat = {
-            "nodes": list(z.get("nodes", [])),
-            "edges": list(z.get("edges", [])),
-            "quotas": z.get("quotas", {}),
-            "seed": z.get("seed", "fab"),
-            "zv": z.get("zv", "v0.1.0")
-        }
-        
-        # Select top-k for stream using shim (pass RNG's internal Random object)
-        stream_ids = ZSpaceShim.select_topk_for_stream(z_compat, k=stream_cap, rng=self.rng._rng)
-        
-        # Select top-k for global (excluding stream)
-        global_ids = ZSpaceShim.select_topk_for_global(
-            z_compat, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
-        )
-        
-        # Map IDs back to nodes (preserve full node data)
-        node_map = {n["id"]: n for n in nodes}
-        stream_nodes = [node_map[id] for id in stream_ids if id in node_map]
-        global_nodes = [node_map[id] for id in global_ids if id in node_map]
-        
-        # Populate windows
-        self.st.stream_win.nodes = stream_nodes
-        self.st.global_win.nodes = global_nodes
-        
-        # Note: MMR stats will be integrated in Phase 2.1 (vec-based diversity)
-        # For now, Z-Space uses score-based top-k (no MMR penalty)
-        
-        # Precision assignment for stream (same logic as FAB selector)
-        if self.st.stream_win.nodes:
-            stream_size = len(self.st.stream_win.nodes)
-            avg_score = sum(n["score"] for n in self.st.stream_win.nodes) / stream_size
-            old_precision = self.st.stream_win.precision
+        # PR#5.3: Determine effective time budget (hard cap)
+        z_quotas = z.get("quotas", {}) or {}
+        quota_ms = float(z_quotas.get("time_ms", float("inf")) or float("inf"))
+        effective_limit_ms = min(self.z_time_limit_ms, quota_ms) if self.z_time_limit_ms > 0.0 else quota_ms
+
+        try:
+            # Immediate timeout if budget is 0
+            if effective_limit_ms <= 0.0:
+                raise TimeoutError("z-space time budget is zero")
             
-            if self.envelope_mode == "legacy":
-                # Phase A: immediate precision assignment
-                new_precision = assign_precision(avg_score)
-            else:
-                # Phase C+: hysteresis with dead band + dwell + rate limit
-                target_precision = assign_precision(avg_score)
-                
-                if stream_size < self.hys_cfg.min_stream_for_upgrade:
-                    # Tiny stream guard (same as FAB selector)
-                    if precision_level(target_precision) > precision_level(old_precision):
-                        new_precision = old_precision  # Prevent upgrade
+            # Check ZSpaceShim availability
+            if not HAS_ZSPACE:
+                raise RuntimeError("ZSpaceShim unavailable")
+            
+            # Start latency tracking (PR#2)
+            t_start = time.perf_counter()
+            
+            # Initialize deterministic RNG from combined seeds
+            z_seed = hash_to_seed(str(z.get("seed", "fab")))
+            tick_seed = self.current_tick
+            combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
+            self.rng = SeededRNG(seed=combined_seed)
+            
+            # PR#3: baseline FAB diversity
+            stream_cap = self.st.stream_win.cap_nodes
+            baseline_div = self._simulate_fab_stream_diversity(
+                z, combined_seed=combined_seed, stream_cap=stream_cap
+            )
+            self.z_last_baseline_div = baseline_div
+
+            # Early timeout check before heavy work
+            elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+            if elapsed_ms > effective_limit_ms:
+                raise TimeoutError(f"z-space selection time budget exceeded pre-select ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
+            
+            nodes = list(z.get("nodes", []))
+            if not nodes:
+                self.st.stream_win.nodes = []
+                self.st.global_win.nodes = []
+                self.z_last_diversity_gain = 0.0
+                self.z_last_baseline_div = 0.0
+                self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
+                return
+            
+            # Use ZSpaceShim for deterministic selection
+            global_cap = self.st.global_win.cap_nodes
+            z_compat = {
+                "nodes": list(z.get("nodes", [])),
+                "edges": list(z.get("edges", [])),
+                "quotas": z.get("quotas", {}),
+                "seed": z.get("seed", "fab"),
+                "zv": z.get("zv", "v0.1.0"),
+            }
+            stream_ids = ZSpaceShim.select_topk_for_stream(z_compat, k=stream_cap, rng=self.rng._rng)
+
+            # Timeout check after stream selection
+            elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+            if elapsed_ms > effective_limit_ms:
+                raise TimeoutError(f"z-space selection time budget exceeded after stream ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
+
+            global_ids = ZSpaceShim.select_topk_for_global(
+                z_compat, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
+            )
+            
+            # Map IDs back to nodes
+            node_map = {n["id"]: n for n in nodes}
+            stream_nodes = [node_map[i] for i in stream_ids if i in node_map]
+            global_nodes = [node_map[i] for i in global_ids if i in node_map]
+            self.st.stream_win.nodes = stream_nodes
+            self.st.global_win.nodes = global_nodes
+            
+            # Precision assignment for stream (same logic as FAB selector)
+            if self.st.stream_win.nodes:
+                stream_size = len(self.st.stream_win.nodes)
+                avg_score = sum(n["score"] for n in self.st.stream_win.nodes) / stream_size
+                old_precision = self.st.stream_win.precision
+                if self.envelope_mode == "legacy":
+                    new_precision = assign_precision(avg_score)
+                else:
+                    target_precision = assign_precision(avg_score)
+                    if stream_size < self.hys_cfg.min_stream_for_upgrade:
+                        if precision_level(target_precision) > precision_level(old_precision):
+                            new_precision = old_precision
+                        else:
+                            new_precision, self.hys_state_stream = assign_precision_hysteresis(
+                                score=avg_score,
+                                state=self.hys_state_stream,
+                                config=self.hys_cfg,
+                                current_tick=self.current_tick
+                            )
                     else:
                         new_precision, self.hys_state_stream = assign_precision_hysteresis(
                             score=avg_score,
@@ -570,36 +589,32 @@ class FABCore:
                             config=self.hys_cfg,
                             current_tick=self.current_tick
                         )
-                else:
-                    # Normal hysteresis path
-                    new_precision, self.hys_state_stream = assign_precision_hysteresis(
-                        score=avg_score,
-                        state=self.hys_state_stream,
-                        config=self.hys_cfg,
-                        current_tick=self.current_tick
-                    )
-            
-            self.st.stream_win.precision = new_precision
-            
-            if old_precision != new_precision:
-                self.diag.inc_envelope_changes()
-        
-        # Global window keeps default cold precision
-        self.st.global_win.precision = "mxfp4.12"
-        
-        # PR#3: diversity gain = Z-Space variance − FAB baseline variance
-        if self.st.stream_win.nodes and len(self.st.stream_win.nodes) > 1:
-            stream_scores = [n["score"] for n in self.st.stream_win.nodes]
-            mean_score = sum(stream_scores) / len(stream_scores)
-            z_variance = sum((s - mean_score) ** 2 for s in stream_scores) / len(stream_scores)
-        else:
-            z_variance = 0.0
+                self.st.stream_win.precision = new_precision
+                if old_precision != new_precision:
+                    self.diag.inc_envelope_changes()
+            self.st.global_win.precision = "mxfp4.12"
 
-        # Клипуем отрицательные значения (разницы из-за тонкостей тай-брейка)
-        self.z_last_diversity_gain = max(0.0, z_variance - self.z_last_baseline_div)
-        
-        # PR#2: Record latency
-        self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
+            # PR#3: diversity gain
+            if self.st.stream_win.nodes and len(self.st.stream_win.nodes) > 1:
+                stream_scores = [n["score"] for n in self.st.stream_win.nodes]
+                mean_score = sum(stream_scores) / len(stream_scores)
+                z_variance = sum((s - mean_score) ** 2 for s in stream_scores) / len(stream_scores)
+            else:
+                z_variance = 0.0
+            self.z_last_diversity_gain = max(0.0, z_variance - self.z_last_baseline_div)
+            self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
+
+        except Exception:
+            # Open circuit breaker and fallback to FAB selector
+            self.z_cb_remaining = max(self.z_cb_cooldown_ticks, 1)
+            self.ab_last_arm = "fab"  # Mark fallback in diagnostics
+            try:
+                self.z_last_latency_ms = (time.perf_counter() - locals().get("t_start", time.perf_counter())) * 1000.0
+            except Exception:
+                self.z_last_latency_ms = 0.0
+            self.z_last_diversity_gain = 0.0
+            self.z_last_baseline_div = 0.0
+            return self._fill_with_fab_selector(z)
     
     def _z_percentile(self, values: list[float], p: float) -> float:
         """PR#5.2: Calculate percentile from sorted values.
@@ -790,7 +805,9 @@ class FABCore:
             "z_gain_p50": self._z_percentile(list(self.z_gain_window), 0.50),
             "z_gain_p95": self._z_percentile(list(self.z_gain_window), 0.95),
             "z_gain_p99": self._z_percentile(list(self.z_gain_window), 0.99),
-            "z_window_size": len(self.z_latency_window)
+            "z_window_size": len(self.z_latency_window),
+            "zspace_cb_open": self.z_cb_remaining > 0,
+            "zspace_cb_cooldown_remaining": int(self.z_cb_remaining)
         }
         
         ctx["diagnostics"] = diag_snapshot
