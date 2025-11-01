@@ -335,7 +335,7 @@ def test_z_space_diversity_gain_vs_baseline_positive():
     assert ctx_fab["diagnostics"]["derived"].get("z_baseline_diversity", 0.0) == 0.0
 
     # Z-Space: вычисляет baseline локально и выдаёт реальный gain
-    zfab = FABCore(session_id="gain-test", selector="z-space")
+    zfab = FABCore(session_id="gain-test", selector="z-space", policy_enabled=False)
     zfab.init_tick(mode="FAB1", budgets=budgets)  # type: ignore[arg-type]
     zfab.fill(z)
     ctx_z = zfab.mix()
@@ -367,7 +367,7 @@ def test_z_space_diversity_gain_zero_on_uniform():
     }
     budgets = {"tokens": 4096, "nodes": 32, "edges": 0, "time_ms": 30}
 
-    zfab = FABCore(session_id="uniform-test", selector="z-space")
+    zfab = FABCore(session_id="uniform-test", selector="z-space", policy_enabled=False)
     zfab.init_tick(mode="FAB1", budgets=budgets)  # type: ignore[arg-type]
     zfab.fill(z)
     ctx = zfab.mix()
@@ -427,7 +427,13 @@ def test_vec_mmr_improves_diversity_gain_through_fab():
     budgets = {"tokens": 8000, "nodes": 20, "edges": 0, "time_ms": 50}  # Larger budget for more diversity
     
     # Test with Z-Space selector (Vec-MMR active)
-    fab_z = FABCore(session_id="vec-mmr-z", selector="z-space", envelope_mode="legacy")
+    fab_z = FABCore(
+        session_id="vec-mmr-z",
+        selector="z-space",
+        envelope_mode="legacy",
+        policy_enabled=False,  # PR#5.6: Disable policy for pure Z-Space test
+        z_cb_cooldown_ticks=0  # PR#5.3: Disable CB to ensure Z-Space selector is used
+    )
     fab_z.init_tick(mode="FAB0", budgets=budgets)  # type: ignore[arg-type]
     fab_z.fill(z_slice)
     ctx_z = fab_z.mix()
@@ -495,7 +501,7 @@ def test_vec_mmr_fallback_to_score_sort_without_vecs():
     budgets = {"tokens": 8000, "nodes": 16, "edges": 0, "time_ms": 50}
     
     # Test with Z-Space selector (should fallback to score-sort)
-    fab_z = FABCore(session_id="no-vec-z", selector="z-space", envelope_mode="legacy")
+    fab_z = FABCore(session_id="no-vec-z", selector="z-space", envelope_mode="legacy", policy_enabled=False, z_cb_cooldown_ticks=0)
     fab_z.init_tick(mode="FAB0", budgets=budgets)  # type: ignore[arg-type]
     fab_z.fill(z_slice)
     ctx_z = fab_z.mix()

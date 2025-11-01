@@ -84,7 +84,23 @@ class FABCore:
         z_meta_min_window: int = 20,
         z_meta_vol_threshold: float = 0.35,
         z_meta_target_bounds: tuple[float, float] = (1.0, 8.0),
-        z_meta_adjust_step_ms: float = 0.25
+        z_meta_adjust_step_ms: float = 0.25,
+        # PR#5.6: Policy-Gating (Intention through Stability)
+        policy_enabled: bool = True,
+        policy_dwell_ticks: int = 5,
+        # Thresholds for policy decisions (volatility / errors)
+        policy_aggr_vol_max: float = 0.20,
+        policy_cons_vol_min: float = 0.60,
+        policy_error_cons_min: float = 0.05,
+        # Multipliers applied per policy (aggressive / balanced / conservative)
+        policy_aggr_ai_mult: float = 1.5,
+        policy_aggr_md_mult: float = 0.9,
+        policy_aggr_cb_mult: float = 0.5,
+        policy_aggr_ab_mult: float = 1.2,
+        policy_cons_ai_mult: float = 0.5,
+        policy_cons_md_mult: float = 0.5,
+        policy_cons_cb_mult: float = 1.5,
+        policy_cons_ab_mult: float = 0.6
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -190,6 +206,26 @@ class FABCore:
         self.z_meta_volatility: float = 0.0  # Normalized std of limit history
         self.z_meta_trend: float = 0.0  # EMA of latency delta
         self.z_latency_ema: float = 0.0  # Exponential moving average of latency
+
+        # PR#5.6: Policy-Gating state
+        self.policy_enabled: bool = bool(policy_enabled)
+        self.policy_mode: str = "balanced"  # 'aggressive' | 'balanced' | 'conservative'
+        self.policy_dwell_ticks: int = int(policy_dwell_ticks)
+        self._policy_last_switch_tick: int = 0
+        self._policy_dwell_remaining: int = 0
+        # Thresholds
+        self.policy_aggr_vol_max: float = float(policy_aggr_vol_max)
+        self.policy_cons_vol_min: float = float(policy_cons_vol_min)
+        self.policy_error_cons_min: float = float(policy_error_cons_min)
+        # Multipliers
+        self.policy_aggr_ai_mult: float = float(policy_aggr_ai_mult)
+        self.policy_aggr_md_mult: float = float(policy_aggr_md_mult)
+        self.policy_aggr_cb_mult: float = float(policy_aggr_cb_mult)
+        self.policy_aggr_ab_mult: float = float(policy_aggr_ab_mult)
+        self.policy_cons_ai_mult: float = float(policy_cons_ai_mult)
+        self.policy_cons_md_mult: float = float(policy_cons_md_mult)
+        self.policy_cons_cb_mult: float = float(policy_cons_cb_mult)
+        self.policy_cons_ab_mult: float = float(policy_cons_ab_mult)
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -258,6 +294,12 @@ class FABCore:
         self.current_tick += 1
         self.diag.inc_ticks()
         
+        # PR#5.6: Update policy once per tick (before fills/mix)
+        try:
+            self._policy_update()
+        except Exception:
+            pass
+        
         if prev_mode != mode:
             self.diag.inc_mode_transitions()
         
@@ -306,7 +348,9 @@ class FABCore:
             # Use Python's Random via SeededRNG to draw a stable float in [0,1)
             ab_rng = SeededRNG(seed=ab_seed)
             roll = ab_rng.random()
-            if roll < self.ab_ratio:
+            # Policy-adjusted A/B probability
+            ab_ratio = self._policy_ab_ratio()
+            if roll < ab_ratio:
                 chosen_selector = self.shadow_selector
                 self.ab_last_used = True
                 self.ab_last_arm = chosen_selector
@@ -697,14 +741,14 @@ class FABCore:
         if outcome == "success" and observed_latency_ms is not None:
             # Additive Increase: if latency <= target, increase limit
             if observed_latency_ms <= self.z_target_latency_ms:
-                new_val = cur + self.z_ai_step_ms
+                new_val = cur + self._policy_ai_step_ms()
                 self.z_limit_last_adjust = "increase"
             else:
                 # Latency above target, don't adjust
                 self.z_limit_last_adjust = "none"
         else:
             # Multiplicative Decrease: on timeout/exception/unavailable
-            new_val = cur * max(0.05, min(0.99, self.z_md_factor))
+            new_val = cur * self._policy_md_factor()
             self.z_limit_last_adjust = "decrease"
         
         # Clamp to [min, max] and hard cap
@@ -796,13 +840,90 @@ class FABCore:
         if new_target != current_target:
             self.z_target_latency_ms = new_target
     
+    def _policy_update(self) -> None:
+        """PR#5.6: Evaluate and (optionally) switch behavioral policy.
+
+        Policies:
+          - aggressive: low volatility, stable, no CB → faster exploration/adaptation
+          - balanced: default
+          - conservative: high volatility, errors/CB → safety first
+
+        Hysteresis via dwell: require policy_dwell_ticks before switching again.
+        """
+        if not getattr(self, "policy_enabled", False):
+            return
+
+        # Respect dwell to avoid flapping
+        if self._policy_dwell_remaining > 0:
+            self._policy_dwell_remaining -= 1
+            return
+
+        vol = float(getattr(self, "z_meta_volatility", 0.0) or 0.0)
+        cb_open = bool(getattr(self, "z_cb_remaining", 0) > 0)
+        err_rate = float(self.st.metrics.get("error_rate", 0.0) if getattr(self, "st", None) and getattr(self, "st").metrics is not None else 0.0)
+
+        target_mode = "balanced"
+        # Conservative if volatility high OR CB open OR error rate above threshold
+        if vol >= self.policy_cons_vol_min or cb_open or err_rate >= self.policy_error_cons_min:
+            target_mode = "conservative"
+        # Aggressive if volatility low, no CB, and low error rate
+        elif vol <= self.policy_aggr_vol_max and not cb_open and err_rate < self.policy_error_cons_min * 0.5:
+            target_mode = "aggressive"
+
+        if target_mode != self.policy_mode:
+            self.policy_mode = target_mode
+            self._policy_last_switch_tick = int(getattr(self, "current_tick", 0))
+            self._policy_dwell_remaining = max(int(self.policy_dwell_ticks), 0)
+
+    # Effective parameter helpers
+    def _policy_ai_step_ms(self) -> float:
+        base = float(getattr(self, "z_ai_step_ms", 0.25))
+        if not getattr(self, "policy_enabled", False):
+            return base
+        if self.policy_mode == "aggressive":
+            return base * self.policy_aggr_ai_mult
+        if self.policy_mode == "conservative":
+            return base * self.policy_cons_ai_mult
+        return base
+
+    def _policy_md_factor(self) -> float:
+        base = float(getattr(self, "z_md_factor", 0.5))
+        if not getattr(self, "policy_enabled", False):
+            return base
+        if self.policy_mode == "aggressive":
+            return max(0.05, min(0.99, base * self.policy_aggr_md_mult))
+        if self.policy_mode == "conservative":
+            return max(0.05, min(0.99, base * self.policy_cons_md_mult))
+        return base
+
+    def _policy_cb_cooldown_ticks(self) -> int:
+        base = int(getattr(self, "z_cb_cooldown_ticks", 50))
+        if not getattr(self, "policy_enabled", False):
+            return base
+        if self.policy_mode == "aggressive":
+            return max(1, int(round(base * self.policy_aggr_cb_mult)))
+        if self.policy_mode == "conservative":
+            return max(1, int(round(base * self.policy_cons_cb_mult)))
+        return base
+
+    def _policy_ab_ratio(self) -> float:
+        base = float(getattr(self, "ab_ratio", 0.5))
+        if not getattr(self, "policy_enabled", False):
+            return base
+        if self.policy_mode == "aggressive":
+            return max(0.0, min(1.0, base * self.policy_aggr_ab_mult))
+        if self.policy_mode == "conservative":
+            return max(0.0, min(1.0, base * self.policy_cons_ab_mult))
+        return base
+    
     def _z_open_circuit_breaker(self, reason: str) -> None:
         """PR#5.3.1: Open circuit breaker with tracking.
         
         Args:
             reason: CB trigger reason ('timeout', 'exception', 'unavailable')
         """
-        self.z_cb_remaining = max(self.z_cb_cooldown_ticks, 1)
+        # Apply policy-adjusted cooldown
+        self.z_cb_remaining = max(self._policy_cb_cooldown_ticks(), 1)
         self.z_cb_reason = reason
         self.z_cb_open_count += 1
         self.z_cb_reason_counts[reason] = self.z_cb_reason_counts.get(reason, 0) + 1
@@ -1013,7 +1134,14 @@ class FABCore:
             "z_meta_last_decision": self.z_meta_last_decision,
             "z_meta_volatility": self.z_meta_volatility,
             "z_meta_trend": self.z_meta_trend,
-            "z_meta_target_bounds": self.z_meta_target_bounds
+            "z_meta_target_bounds": self.z_meta_target_bounds,
+            "policy_enabled": self.policy_enabled,
+            "policy_mode": self.policy_mode,
+            "policy_dwell_remaining": int(getattr(self, "_policy_dwell_remaining", 0)),
+            "policy_effective_ai_step_ms": self._policy_ai_step_ms(),
+            "policy_effective_md_factor": self._policy_md_factor(),
+            "policy_effective_cb_cooldown": self._policy_cb_cooldown_ticks(),
+            "policy_effective_ab_ratio": self._policy_ab_ratio()
         }
         
         ctx["diagnostics"] = diag_snapshot

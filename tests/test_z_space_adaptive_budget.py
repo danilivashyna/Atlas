@@ -69,7 +69,8 @@ def test_adapt_increase_on_success(monkeypatch):
         z_limit_min_ms=10.0,
         z_limit_max_ms=1000.0,
         z_ai_step_ms=0.25,
-        z_md_factor=0.5
+        z_md_factor=0.5,
+        policy_enabled=False  # PR#5.6: Disable policy for pure AIMD test
     )
     
     # Set initial limit to something below max
@@ -114,7 +115,8 @@ def test_adapt_decrease_on_timeout(monkeypatch):
         z_limit_min_ms=1.0,
         z_limit_max_ms=10.0,
         z_ai_step_ms=0.25,
-        z_md_factor=0.5
+        z_md_factor=0.5,
+        policy_enabled=False  # PR#5.6: Disable policy for pure AIMD test
     )
     
     initial_limit = fab.z_limit_current_ms
@@ -177,7 +179,8 @@ def test_adapt_clamped_within_bounds(monkeypatch):
         z_limit_min_ms=1.0,
         z_limit_max_ms=100.0,
         z_ai_step_ms=0.25,
-        z_md_factor=0.5
+        z_md_factor=0.5,
+        policy_enabled=False  # PR#5.6: Disable policy for pure AIMD test
     )
     
     # Upper bound: increase until hitting max (100.0ms)

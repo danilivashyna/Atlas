@@ -207,7 +207,7 @@ def test_z_percentiles_track_distribution():
         "zv": "v0.1.0",
     }
     fab = FABCore(selector="z-space", session_id="percentile-test", envelope_mode="legacy",
-                  ab_shadow_enabled=False)
+                  ab_shadow_enabled=False, policy_enabled=False)  # PR#5.6: Disable policy
     
     # Run enough ticks to fill window (100+)
     for _ in range(120):
