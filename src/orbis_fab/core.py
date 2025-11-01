@@ -107,7 +107,12 @@ class FABCore:
         reward_weights: tuple[float, float, float, float] = (+1.0, -1.0, -1.0, -1.0),  # (diversity, latency, cb, error)
         reward_window: int = 50,
         reward_pressure_ai: float = 0.1,
-        reward_pressure_target: float = 0.1
+        reward_pressure_target: float = 0.1,
+        # PR#6.0: SELF-Token Loop (close self-referencing loop)
+        selfloop_enabled: bool = True,
+        self_presence_alpha: float = 0.2,
+        self_presence_high: float = 0.8,
+        self_presence_low: float = 0.3
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -248,6 +253,13 @@ class FABCore:
         self.reward_ema: float = 0.0
         from collections import deque as _deque2
         self.reward_history = _deque2(maxlen=self.reward_window)
+
+        # PR#6.0: SELF-Token Loop state
+        self.selfloop_enabled: bool = bool(selfloop_enabled)
+        self.self_presence_alpha: float = float(self_presence_alpha)
+        self.self_presence_high: float = float(self_presence_high)
+        self.self_presence_low: float = float(self_presence_low)
+        self.self_presence_ema: float = 0.0
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -870,6 +882,16 @@ class FABCore:
                 new_target -= self.reward_pressure_target
             elif reward_signal < -0.5:
                 new_target += self.reward_pressure_target
+
+        # PR#6.0: SELF-Token Loop nudge to target
+        if getattr(self, "selfloop_enabled", False):
+            sp_ema = getattr(self, "self_presence_ema", 0.0)
+            # High self_presence → tighten target (confidence → faster)
+            # Low self_presence → loosen target (uncertainty → safer)
+            if sp_ema >= self.self_presence_high:
+                new_target -= self.reward_pressure_target * 0.5  # Gentle nudge
+            elif sp_ema <= self.self_presence_low:
+                new_target += self.reward_pressure_target * 0.5
         
         # Clamp to meta target bounds
         min_target, max_target = self.z_meta_target_bounds
@@ -900,13 +922,23 @@ class FABCore:
         cb_open = bool(getattr(self, "z_cb_remaining", 0) > 0)
         err_rate = float(self.st.metrics.get("error_rate", 0.0) if getattr(self, "st", None) and getattr(self, "st").metrics is not None else 0.0)
 
+        # PR#6.0: SELF-Token Loop influence on policy decision
+        self_presence_ema = getattr(self, "self_presence_ema", 0.0)
+        selfloop_enabled = getattr(self, "selfloop_enabled", False)
+
         target_mode = "balanced"
         # Conservative if volatility high OR CB open OR error rate above threshold
         # (safety-first tie-break: prefer conservative when conditions overlap)
+        # PR#6.0: Also conservative if self_presence_ema very low (self-blockade)
         if vol >= self.policy_cons_vol_min or cb_open or err_rate >= self.policy_error_cons_min:
             target_mode = "conservative"
+        elif selfloop_enabled and self_presence_ema <= self.self_presence_low:
+            target_mode = "conservative"
         # Aggressive if volatility low, no CB, and low error rate
+        # PR#6.0: Also aggressive if self_presence_ema very high (self-intensification)
         elif vol <= self.policy_aggr_vol_max and not cb_open and err_rate < self.policy_error_cons_min * 0.5:
+            target_mode = "aggressive"
+        elif selfloop_enabled and self_presence_ema >= self.self_presence_high and not cb_open and err_rate < self.policy_error_cons_min:
             target_mode = "aggressive"
 
         if target_mode != self.policy_mode:
@@ -1221,7 +1253,9 @@ class FABCore:
             "reward_enabled": self.reward_enabled,
             "reward_last": self.reward_last,
             "reward_ema": self.reward_ema,
-            "reward_window_avg": sum(self.reward_history) / len(self.reward_history) if len(self.reward_history) > 0 else 0.0
+            "reward_window_avg": sum(self.reward_history) / len(self.reward_history) if len(self.reward_history) > 0 else 0.0,
+            "selfloop_enabled": self.selfloop_enabled,
+            "self_presence_ema": self.self_presence_ema
         }
         
         ctx["diagnostics"] = diag_snapshot
@@ -1257,6 +1291,14 @@ class FABCore:
             "error_rate": error_rate
         }
         self.st.metrics = m
+
+        # PR#6.0: Update self_presence EMA for SELF-Token Loop
+        if getattr(self, "selfloop_enabled", False):
+            sp = float(self_presence)
+            if self.self_presence_ema == 0.0:
+                self.self_presence_ema = sp
+            else:
+                self.self_presence_ema += self.self_presence_alpha * (sp - self.self_presence_ema)
         
         # Determine degradation condition
         degraded = (stress > 0.7) or (error_rate > 0.05)
