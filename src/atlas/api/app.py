@@ -7,12 +7,15 @@ Atlas FastAPI Application
 REST API for semantic space operations with encode, decode, and explain endpoints.
 """
 
+import json
 import logging
+import os
 import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
 from importlib.metadata import version as pkg_version
+from typing import Any, Dict, Optional
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -55,8 +58,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _ensure_str(v: Optional[str] | Dict[str, Any] | None) -> str:
+    """Convert value to str, handling None and dict gracefully."""
+    if v is None:
+        return ""
+    if isinstance(v, dict):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v)
+
+
 # Feature flags
-import os
 
 SUMMARY_MODE = os.getenv("ATLAS_SUMMARY_MODE", "proportional").lower()
 # Memory feature flag: on|off
@@ -106,7 +118,7 @@ def autoscale_controller():
     """Background autoscaling task."""
     from atlas.metrics.mensum import metrics_ns
 
-    global autoscale_beam, autoscale_depth, autoscale_tau, autoscale_recent_conf, autoscale_timer
+    global autoscale_beam  # Only autoscale_beam is actually modified
 
     try:
         # Check if enabled
@@ -118,27 +130,29 @@ def autoscale_controller():
         if autoscale_recent_conf:
             avg_conf = sum(autoscale_recent_conf) / len(autoscale_recent_conf)
             if avg_conf > 0.9 and autoscale_beam > 3:
+                old_beam = autoscale_beam
                 autoscale_beam -= 1
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "down"}
                 )
                 logger.info(
-                    f"autoscale: beam {autoscale_beam + 1}→{autoscale_beam} (conf={avg_conf:.3f})"
+                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
                 )
             elif avg_conf < 0.8 and autoscale_beam < 12:
+                old_beam = autoscale_beam
                 autoscale_beam += 1
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "up"}
                 )
                 logger.info(
-                    f"autoscale: beam {autoscale_beam - 1}→{autoscale_beam} (conf={avg_conf:.3f})"
+                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
                 )
 
         # Clear recent conf for next period
         autoscale_recent_conf.clear()
 
     except Exception as e:
-        logger.error(f"Autoscale error: {e}")
+        logger.error("Autoscale error: %s", e)
     finally:
         # Schedule next
         period = int(os.getenv("ATLAS_AUTOSCALE_PERIOD_S", "30"))
@@ -147,7 +161,7 @@ def autoscale_controller():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):  # Renamed to avoid shadowing outer 'app'
     """Lifecycle manager for startup/shutdown"""
     global semantic_space, hierarchical_encoder, hierarchical_decoder
 
@@ -159,7 +173,7 @@ async def lifespan(app: FastAPI):
         hierarchical_decoder = HierarchicalDecoder()
         logger.info("Atlas Semantic Space initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize Semantic Space: {e}")
+        logger.error("Failed to initialize Semantic Space: %s", e)
         raise
 
     # Start autoscaling controller
@@ -171,7 +185,7 @@ async def lifespan(app: FastAPI):
     # (not only at import time) so that TestClient and other runtimes pick up
     # the routes even if the module import happened earlier.
     try:
-        import atlas.api.memory_routes  # noqa: F401
+        import atlas.api.memory_routes  # noqa: F401,E501
     except Exception:
         # Memory package optional - ignore if missing or broken during tests
         logger.debug("Optional memory routes not available at startup")
@@ -186,16 +200,13 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
-# Configure logging from environment
-import os
-
 log_level = os.getenv("ATLAS_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-logger.info(f"Atlas API initializing... (log_level={log_level})")
+logger.info("Atlas API initializing... (log_level=%s)", log_level)
 
 app = FastAPI(
     title="Atlas Semantic Space API",
@@ -280,8 +291,6 @@ app.add_middleware(
 
 # Mount static files (favicon, etc.)
 try:
-    import os
-
     static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -297,7 +306,7 @@ async def track_requests(request: Request, call_next):
     request.state.trace_id = trace_id
 
     # Log metadata only (no user data)
-    logger.info(f"Request {trace_id}: {request.method} {request.url.path}")
+    logger.info("Request %s: %s %s", trace_id, request.method, request.url.path)
 
     start_time = time.time()
 
@@ -316,13 +325,13 @@ async def track_requests(request: Request, call_next):
             metrics["latencies"][endpoint] = []
         metrics["latencies"][endpoint].append(latency_ms)
 
-        logger.info(f"Request {trace_id} completed in {latency_ms:.2f}ms")
+        logger.info("Request %s completed in %.2fms", trace_id, latency_ms)
 
         return response
 
     except Exception as e:
         metrics["errors_total"] += 1
-        logger.error(f"Request {trace_id} failed: {str(e)}")
+        logger.error("Request %s failed: %s", trace_id, str(e))
         raise
 
 
@@ -337,7 +346,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     message = str(exc)
 
     # Log error (but not user data)
-    logger.error(f"Error {trace_id}: {error_type} - {message}")
+    logger.error("Error %s: %s - %s", trace_id, error_type, message)
 
     # Create error response
     error_response = ErrorResponse(
@@ -436,14 +445,14 @@ async def encode_text(request: EncodeRequest, req: Request) -> EncodeResponse:
 
     try:
         # Encode (we don't log the text)
-        logger.info(f"Encoding text (trace_id={trace_id}, length={len(request.text)})")
+        logger.info("Encoding text (trace_id=%s, length=%d)", trace_id, len(request.text))
 
         vector = semantic_space.encode(request.text)
 
         return EncodeResponse(vector=vector.tolist(), norm=True, trace_id=trace_id)
 
     except Exception as e:
-        logger.error(f"Encode failed (trace_id={trace_id}): {e}")
+        logger.error("Encode failed (trace_id=%s): %s", trace_id, e)
         raise
 
 
@@ -460,7 +469,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     try:
-        logger.info(f"Decoding vector (trace_id={trace_id})")
+        logger.info("Decoding vector (trace_id=%s)", trace_id)
 
         # Clip vector to valid range
         vector = np.clip(request.vector, -1.0, 1.0)
@@ -500,13 +509,13 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
         )
 
     except Exception as e:
-        logger.error(f"Decode failed (trace_id={trace_id}): {e}")
+        logger.error("Decode failed (trace_id=%s): %s", trace_id, e)
 
         # Graceful degradation: return text without reasoning
         try:
             text = semantic_space.decode(np.array(request.vector))
             return DecodeResponse(text=text, reasoning=[], explainable=False, trace_id=trace_id)
-        except:
+        except Exception:
             raise HTTPException(status_code=500, detail="Decode failed completely")
 
 
@@ -521,7 +530,7 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     try:
-        logger.info(f"Explaining text (trace_id={trace_id}, length={len(request.text)})")
+        logger.info("Explaining text (trace_id=%s, length=%d)", trace_id, len(request.text))
 
         # Encode
         vector = semantic_space.encode(request.text)
@@ -547,7 +556,7 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
         return ExplainResponse(vector=vector.tolist(), dims=dims_explanations, trace_id=trace_id)
 
     except Exception as e:
-        logger.error(f"Explain failed (trace_id={trace_id}): {e}")
+        logger.error("Explain failed (trace_id=%s): %s", trace_id, e)
         raise
 
 
@@ -588,8 +597,11 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
 
     try:
         logger.info(
-            f"Summarizing text (trace_id={trace_id}, length={len(request.text)}, "
-            f"target={request.target_tokens}, mode={request.mode})"
+            "Summarizing text (trace_id=%s, length=%d, target=%d, mode=%s)",
+            trace_id,
+            len(request.text),
+            request.target_tokens,
+            request.mode,
         )
 
         # Import summarize function
@@ -619,7 +631,7 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
         )
 
     except Exception as e:
-        logger.error(f"Summarize failed (trace_id={trace_id}): {e}")
+        logger.error("Summarize failed (trace_id=%s): %s", trace_id, e)
         raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
 
 
@@ -642,8 +654,13 @@ async def encode_hierarchical(
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
+    if hierarchical_encoder is None:
+        raise HTTPException(status_code=500, detail="Hierarchical encoder not initialized")
+
     try:
-        logger.info(f"Encoding hierarchical (trace_id={trace_id}, max_depth={request.max_depth})")
+        logger.info(
+            "Encoding hierarchical (trace_id=%s, max_depth=%d)", trace_id, request.max_depth
+        )
 
         tree = hierarchical_encoder.encode_hierarchical(
             request.text, max_depth=request.max_depth, expand_threshold=request.expand_threshold
@@ -654,7 +671,7 @@ async def encode_hierarchical(
         )
 
     except Exception as e:
-        logger.error(f"Hierarchical encode failed (trace_id={trace_id}): {e}")
+        logger.error("Hierarchical encode failed (trace_id=%s): %s", trace_id, e)
         raise
 
 
@@ -674,8 +691,11 @@ async def decode_hierarchical(
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
+    if hierarchical_decoder is None:
+        raise HTTPException(status_code=500, detail="Hierarchical decoder not initialized")
+
     try:
-        logger.info(f"Decoding hierarchical (trace_id={trace_id})")
+        logger.info("Decoding hierarchical (trace_id=%s)", trace_id)
 
         result = hierarchical_decoder.decode_hierarchical(
             request.tree, top_k=request.top_k, with_reasoning=True
@@ -689,7 +709,7 @@ async def decode_hierarchical(
         )
 
     except Exception as e:
-        logger.error(f"Hierarchical decode failed (trace_id={trace_id}): {e}")
+        logger.error("Hierarchical decode failed (trace_id=%s): %s", trace_id, e)
 
         # Graceful degradation
         try:
@@ -699,7 +719,7 @@ async def decode_hierarchical(
             return DecodeHierarchicalResponse(
                 text=result["text"], reasoning=[], explainable=False, trace_id=trace_id
             )
-        except:
+        except Exception:
             raise HTTPException(status_code=500, detail="Hierarchical decode failed completely")
 
 
@@ -725,8 +745,15 @@ async def manipulate_hierarchical(
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
+    if hierarchical_encoder is None or hierarchical_decoder is None:
+        raise HTTPException(
+            status_code=500, detail="Hierarchical encoder/decoder not initialized"
+        )
+
     try:
-        logger.info(f"Manipulating hierarchical (trace_id={trace_id}, edits={len(request.edits)})")
+        logger.info(
+            "Manipulating hierarchical (trace_id=%s, edits=%d)", trace_id, len(request.edits)
+        )
 
         # Encode original
         original_tree = hierarchical_encoder.encode_hierarchical(request.text, max_depth=2)
@@ -757,7 +784,7 @@ async def manipulate_hierarchical(
         )
 
     except Exception as e:
-        logger.error(f"Hierarchical manipulation failed (trace_id={trace_id}): {e}")
+        logger.error("Hierarchical manipulation failed (trace_id=%s): %s", trace_id, e)
         raise
 
 
