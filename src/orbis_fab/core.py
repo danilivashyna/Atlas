@@ -128,6 +128,12 @@ class FABCore:
         self.ab_last_used: bool = False
         self.ab_last_arm: str = self.selector  # effective selector used in last fill
         
+        # PR#5.1: A/B per-arm counters and accumulators
+        self.ab_arm_counts: dict[str, int] = {"fab": 0, "z-space": 0}
+        self.ab_latency_sum: dict[str, float] = {"fab": 0.0, "z-space": 0.0}
+        self.ab_diversity_gain_sum: dict[str, float] = {"fab": 0.0, "z-space": 0.0}
+        self._ab_stats_last_tick: int = -1  # guard to avoid double-count per tick
+        
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
         self.session_seed = hash_to_seed(self.session_id)  # Cache to avoid rehashing on every fill()
@@ -586,6 +592,33 @@ class FABCore:
         # PR#2: Record latency
         self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
     
+    def _ab_safe_avg(self, s: float, n: int) -> float:
+        """PR#5.1: Safe division for averages (avoid division by zero)"""
+        return s / n if n > 0 else 0.0
+
+    def _ab_record_metrics_for_current_tick(self) -> None:
+        """PR#5.1: Update per-arm counters and sums exactly once per tick.
+        
+        Relies on self.ab_last_arm set in fill(). For 'z-space' arm,
+        records real z-metrics; for 'fab' arm, records zeros (no z-metrics).
+        Guard (_ab_stats_last_tick) prevents double-counting on multiple mix() calls.
+        """
+        if not self.ab_shadow_enabled:
+            return
+        if self._ab_stats_last_tick == self.current_tick:
+            return
+        arm = self.ab_last_arm
+        if arm not in ("fab", "z-space"):
+            return
+        self.ab_arm_counts[arm] += 1
+        if arm == "z-space":
+            self.ab_latency_sum[arm] += float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
+            self.ab_diversity_gain_sum[arm] += float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
+        else:
+            self.ab_latency_sum[arm] += 0.0
+            self.ab_diversity_gain_sum[arm] += 0.0
+        self._ab_stats_last_tick = self.current_tick
+    
     def mix(self) -> dict:
         """Return tick context snapshot (no I/O)
         
@@ -609,6 +642,13 @@ class FABCore:
             }
         """
         self.diag.inc_mixes()
+        
+        # PR#5.1: update A/B per-arm stats once per tick
+        try:
+            self._ab_record_metrics_for_current_tick()
+        except Exception:
+            # diagnostics should not break main flow
+            pass
         
         # Update gauges
         self.diag.set_gauge(
@@ -670,7 +710,19 @@ class FABCore:
             "z_latency_ms": z_latency_ms,
             "ab_shadow_enabled": self.ab_shadow_enabled,
             "ab_ratio": self.ab_ratio,
-            "ab_arm": self.ab_last_arm
+            "ab_arm": self.ab_last_arm,
+            "ab_counts": {
+                "fab": self.ab_arm_counts.get("fab", 0),
+                "z-space": self.ab_arm_counts.get("z-space", 0),
+            },
+            "ab_latency_avg": {
+                "fab": self._ab_safe_avg(self.ab_latency_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)),
+                "z-space": self._ab_safe_avg(self.ab_latency_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)),
+            },
+            "ab_diversity_gain_avg": {
+                "fab": self._ab_safe_avg(self.ab_diversity_gain_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)),
+                "z-space": self._ab_safe_avg(self.ab_diversity_gain_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)),
+            }
         }
         
         ctx["diagnostics"] = diag_snapshot

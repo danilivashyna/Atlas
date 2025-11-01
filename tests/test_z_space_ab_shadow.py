@@ -102,3 +102,65 @@ def test_ab_shadow_uses_both_arms_across_ticks_when_ratio_half():
     
     # Validate: Both arms appeared at least once
     assert "fab" in used and "z-space" in used
+
+
+def test_ab_counters_increment_once_per_tick():
+    """Test: A/B counters increment exactly once per tick (idempotent mix())"""
+    from orbis_fab.core import FABCore
+    nodes = [{"id": f"s{i:02d}", "score": 1.0 - i * 0.001} for i in range(16)]
+    z = {
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"nodes": 16, "tokens": 8000, "edges": 0, "time_ms": 50},
+        "seed": "ab-counters",
+        "zv": "v0.1.0",
+    }
+    fab = FABCore(selector="fab", session_id="ab-counters", envelope_mode="legacy",
+                  ab_shadow_enabled=True, ab_ratio=1.0, shadow_selector="z-space")
+    # Tick 0
+    fab.init_tick(mode="FAB0", budgets={"tokens": 8000, "nodes": 16, "edges": 0, "time_ms": 50})
+    fab.fill(z)
+    # Multiple mix() calls in same tick → counter should not double
+    ctx1 = fab.mix()
+    ctx2 = fab.mix()
+    d = ctx2["diagnostics"]["derived"]
+    assert d["ab_counts"]["z-space"] == 1
+    assert d["ab_counts"]["fab"] == 0
+
+    # Next tick → increment again
+    fab.current_tick += 1
+    fab.fill(z)
+    fab.mix()
+    d2 = fab.mix()["diagnostics"]["derived"]
+    assert d2["ab_counts"]["z-space"] == 2
+
+
+def test_ab_latency_and_gain_averages_present_and_non_negative():
+    """Test: A/B averages (latency, diversity gain) present and non-negative"""
+    from orbis_fab.core import FABCore
+    nodes = [{"id": f"s{i:02d}", "score": 1.0 - i * 0.002} for i in range(16)]
+    z = {
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"nodes": 16, "tokens": 8000, "edges": 0, "time_ms": 50},
+        "seed": "ab-avgs",
+        "zv": "v0.1.0",
+    }
+    fab = FABCore(selector="fab", session_id="ab-avgs", envelope_mode="legacy",
+                  ab_shadow_enabled=True, ab_ratio=0.5, shadow_selector="z-space")
+    # Multiple ticks to see both arms
+    seen = set()
+    for _ in range(12):
+        fab.init_tick(mode="FAB0", budgets={"tokens": 8000, "nodes": 16, "edges": 0, "time_ms": 50})
+        fab.fill(z)
+        d = fab.mix()["diagnostics"]["derived"]
+        seen.add(d["ab_arm"])
+        fab.current_tick += 1
+    assert "fab" in seen and "z-space" in seen
+
+    d = fab.mix()["diagnostics"]["derived"]
+    # Averages should be defined and non-negative
+    assert d["ab_latency_avg"]["fab"] >= 0.0
+    assert d["ab_latency_avg"]["z-space"] >= 0.0
+    assert d["ab_diversity_gain_avg"]["fab"] >= 0.0
+    assert d["ab_diversity_gain_avg"]["z-space"] >= 0.0
