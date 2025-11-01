@@ -78,7 +78,13 @@ class FABCore:
         z_limit_min_ms: float = 1.0,
         z_limit_max_ms: float = 10.0,
         z_ai_step_ms: float = 0.25,
-        z_md_factor: float = 0.5
+        z_md_factor: float = 0.5,
+        # PR#5.5: Meta-adaptation (self-tuning target latency)
+        z_meta_enabled: bool = True,
+        z_meta_min_window: int = 20,
+        z_meta_vol_threshold: float = 0.35,
+        z_meta_target_bounds: tuple[float, float] = (1.0, 8.0),
+        z_meta_adjust_step_ms: float = 0.25
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -173,6 +179,17 @@ class FABCore:
         from collections import deque as _deque
         self.z_limit_history = _deque(maxlen=50)
         self.z_limit_last_adjust: str = ""
+
+        # PR#5.5: Meta-adaptation (self-tuning target latency)
+        self.z_meta_enabled: bool = bool(z_meta_enabled)
+        self.z_meta_min_window: int = int(z_meta_min_window)
+        self.z_meta_vol_threshold: float = float(z_meta_vol_threshold)
+        self.z_meta_target_bounds: tuple[float, float] = (float(z_meta_target_bounds[0]), float(z_meta_target_bounds[1]))
+        self.z_meta_adjust_step_ms: float = float(z_meta_adjust_step_ms)
+        self.z_meta_last_decision: str = ""  # 'tighten'/'loosen'/'hold'/'none'
+        self.z_meta_volatility: float = 0.0  # Normalized std of limit history
+        self.z_meta_trend: float = 0.0  # EMA of latency delta
+        self.z_latency_ema: float = 0.0  # Exponential moving average of latency
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -699,11 +716,85 @@ class FABCore:
         if new_val != cur:
             self.z_limit_current_ms = new_val
         
+        # PR#5.5: Meta-learn before tracking history
+        try:
+            self._z_meta_learn(observed_latency_ms)
+        except Exception:
+            pass
+        
         # Track history for observability
         try:
             self.z_limit_history.append(float(self.z_limit_current_ms))
         except Exception:
             pass
+    
+    def _z_meta_learn(self, observed_latency_ms: float | None = None) -> None:
+        """PR#5.5: Meta-adaptation (self-tuning target latency).
+        
+        Observes limit volatility and latency trends to adjust z_target_latency_ms:
+        - tighten: Reduce target when stable and fast (low volatility, non-positive trend)
+        - loosen: Increase target when unstable or slowing (high volatility or positive trend)
+        - hold: No change
+        
+        Args:
+            observed_latency_ms: Current latency measurement (for EMA tracking)
+        """
+        if not getattr(self, "z_meta_enabled", False):
+            self.z_meta_last_decision = "none"
+            return
+        
+        # Update latency EMA (α=0.2 for responsiveness)
+        if observed_latency_ms is not None:
+            if self.z_latency_ema == 0.0:
+                self.z_latency_ema = observed_latency_ms
+            else:
+                alpha = 0.2
+                delta = observed_latency_ms - self.z_latency_ema
+                self.z_latency_ema = self.z_latency_ema + alpha * delta
+                # Update trend (EMA of delta)
+                self.z_meta_trend = self.z_meta_trend + alpha * (delta - self.z_meta_trend)
+        
+        # Need minimum window for volatility calculation
+        if len(self.z_limit_history) < self.z_meta_min_window:
+            self.z_meta_last_decision = "none"
+            return
+        
+        # Calculate volatility (coefficient of variation)
+        window = list(self.z_limit_history)[-self.z_meta_min_window:]
+        try:
+            mean_limit = sum(window) / len(window)
+            if mean_limit > 0.0:
+                variance = sum((x - mean_limit) ** 2 for x in window) / len(window)
+                std_limit = variance ** 0.5
+                self.z_meta_volatility = std_limit / mean_limit  # Normalized
+            else:
+                self.z_meta_volatility = 0.0
+        except Exception:
+            self.z_meta_volatility = 0.0
+            self.z_meta_last_decision = "none"
+            return
+        
+        # Decision logic
+        current_target = self.z_target_latency_ms
+        new_target = current_target
+        
+        # tighten: stable (low volatility) and fast/steady (trend <= 0)
+        if self.z_meta_volatility < self.z_meta_vol_threshold and self.z_meta_trend <= 0.0:
+            new_target = current_target - self.z_meta_adjust_step_ms
+            self.z_meta_last_decision = "tighten"
+        # loosen: unstable (high volatility) or slowing (trend > 0)
+        elif self.z_meta_volatility >= self.z_meta_vol_threshold or self.z_meta_trend > 0.0:
+            new_target = current_target + self.z_meta_adjust_step_ms
+            self.z_meta_last_decision = "loosen"
+        else:
+            self.z_meta_last_decision = "hold"
+        
+        # Clamp to meta target bounds
+        min_target, max_target = self.z_meta_target_bounds
+        new_target = max(min_target, min(max_target, new_target))
+        
+        if new_target != current_target:
+            self.z_target_latency_ms = new_target
     
     def _z_open_circuit_breaker(self, reason: str) -> None:
         """PR#5.3.1: Open circuit breaker with tracking.
@@ -917,7 +1008,12 @@ class FABCore:
             "z_target_latency_ms": self.z_target_latency_ms,
             "z_limit_min_ms": self.z_limit_min_ms,
             "z_limit_max_ms": self.z_limit_max_ms,
-            "z_limit_last_adjust": self.z_limit_last_adjust
+            "z_limit_last_adjust": self.z_limit_last_adjust,
+            "z_meta_enabled": self.z_meta_enabled,
+            "z_meta_last_decision": self.z_meta_last_decision,
+            "z_meta_volatility": self.z_meta_volatility,
+            "z_meta_trend": self.z_meta_trend,
+            "z_meta_target_bounds": self.z_meta_target_bounds
         }
         
         ctx["diagnostics"] = diag_snapshot
