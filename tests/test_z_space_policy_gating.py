@@ -37,6 +37,9 @@ def _make_core(**overrides):
         policy_cons_md_mult=0.5,
         policy_cons_cb_mult=1.5,
         policy_cons_ab_mult=0.6,
+        # Disable SELF-Loop to test pure policy behavior
+        selfloop_enabled=False,
+        reward_enabled=False
     )
     cfg.update(overrides)
     return FABCore(**cfg)
