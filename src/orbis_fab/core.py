@@ -100,7 +100,14 @@ class FABCore:
         policy_cons_ai_mult: float = 0.5,
         policy_cons_md_mult: float = 0.5,
         policy_cons_cb_mult: float = 1.5,
-        policy_cons_ab_mult: float = 0.6
+        policy_cons_ab_mult: float = 0.6,
+        # PR#5.7: Reward Shaping (soft gradient over META)
+        reward_enabled: bool = True,
+        reward_alpha: float = 0.2,
+        reward_weights: tuple[float, float, float, float] = (+1.0, -1.0, -1.0, -1.0),  # (diversity, latency, cb, error)
+        reward_window: int = 50,
+        reward_pressure_ai: float = 0.1,
+        reward_pressure_target: float = 0.1
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -226,6 +233,21 @@ class FABCore:
         self.policy_cons_md_mult: float = float(policy_cons_md_mult)
         self.policy_cons_cb_mult: float = float(policy_cons_cb_mult)
         self.policy_cons_ab_mult: float = float(policy_cons_ab_mult)
+
+        # PR#5.7: Reward Shaping state
+        self.reward_enabled: bool = bool(reward_enabled)
+        self.reward_alpha: float = float(reward_alpha)
+        self.reward_weights: tuple[float, float, float, float] = (
+            float(reward_weights[0]), float(reward_weights[1]),
+            float(reward_weights[2]), float(reward_weights[3])
+        )
+        self.reward_window: int = int(reward_window)
+        self.reward_pressure_ai: float = float(reward_pressure_ai)
+        self.reward_pressure_target: float = float(reward_pressure_target)
+        self.reward_last: float = 0.0
+        self.reward_ema: float = 0.0
+        from collections import deque as _deque2
+        self.reward_history = _deque2(maxlen=self.reward_window)
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -765,6 +787,12 @@ class FABCore:
             self._z_meta_learn(observed_latency_ms)
         except Exception:
             pass
+
+        # PR#5.7: Update reward signal after META
+        try:
+            self._reward_update()
+        except Exception:
+            pass
         
         # Track history for observability
         try:
@@ -833,6 +861,16 @@ class FABCore:
         else:
             self.z_meta_last_decision = "hold"
         
+        # PR#5.7: Apply gentle reward pressure to target
+        if getattr(self, "reward_enabled", False):
+            reward_signal = getattr(self, "reward_ema", 0.0)
+            # Positive reward → tighten target (system doing well)
+            # Negative reward → loosen target (system struggling)
+            if reward_signal > 0.5:
+                new_target -= self.reward_pressure_target
+            elif reward_signal < -0.5:
+                new_target += self.reward_pressure_target
+        
         # Clamp to meta target bounds
         min_target, max_target = self.z_meta_target_bounds
         new_target = max(min_target, min(max_target, new_target))
@@ -880,13 +918,24 @@ class FABCore:
     def _policy_ai_step_ms(self) -> float:
         base = float(getattr(self, "z_ai_step_ms", 0.25))
         if not getattr(self, "policy_enabled", False):
-            return base
-        if self.policy_mode == "aggressive":
+            val = base
+        elif self.policy_mode == "aggressive":
             val = base * self.policy_aggr_ai_mult
         elif self.policy_mode == "conservative":
             val = base * self.policy_cons_ai_mult
         else:
             val = base
+        
+        # PR#5.7: Apply gentle reward pressure to AI step
+        if getattr(self, "reward_enabled", False):
+            reward_signal = getattr(self, "reward_ema", 0.0)
+            # Positive reward → slightly faster adaptation
+            # Negative reward → slightly slower adaptation
+            if reward_signal > 0.5:
+                val += self.reward_pressure_ai
+            elif reward_signal < -0.5:
+                val -= self.reward_pressure_ai
+        
         # Clamp to reasonable bounds (min=0.01ms, max=10.0ms)
         return max(0.01, min(10.0, val))
 
@@ -919,6 +968,28 @@ class FABCore:
         if self.policy_mode == "conservative":
             return max(0.0, min(1.0, base * self.policy_cons_ab_mult))
         return base
+
+    # PR#5.7: Reward Shaping
+    def _reward_update(self) -> None:
+        """Compute and track reward signal for soft gradient over META/AIMD.
+
+        Reward = weighted sum of: diversity_gain (+), latency (-), CB open (-), error_rate (-)
+        EMA-smoothed reward influences AI step and target latency (gentle nudges).
+        """
+        if not getattr(self, "reward_enabled", False):
+            return
+
+        w_div, w_lat, w_cb, w_err = self.reward_weights
+        div = float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
+        lat = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
+        cb = 1.0 if getattr(self, "z_cb_remaining", 0) > 0 else 0.0
+        err = float(self.st.metrics.get("error_rate", 0.0) if getattr(self, "st", None) and getattr(self, "st").metrics is not None else 0.0)
+
+        # Weighted reward (can be positive or negative)
+        r = w_div * div + w_lat * lat + w_cb * cb + w_err * err
+        self.reward_last = r
+        self.reward_ema = self.reward_alpha * r + (1.0 - self.reward_alpha) * self.reward_ema
+        self.reward_history.append(r)
     
     def _z_open_circuit_breaker(self, reason: str) -> None:
         """PR#5.3.1: Open circuit breaker with tracking.
@@ -1146,7 +1217,11 @@ class FABCore:
             "policy_effective_ai_step_ms": self._policy_ai_step_ms(),
             "policy_effective_md_factor": self._policy_md_factor(),
             "policy_effective_cb_cooldown": self._policy_cb_cooldown_ticks(),
-            "policy_effective_ab_ratio": self._policy_ab_ratio()
+            "policy_effective_ab_ratio": self._policy_ab_ratio(),
+            "reward_enabled": self.reward_enabled,
+            "reward_last": self.reward_last,
+            "reward_ema": self.reward_ema,
+            "reward_window_avg": sum(self.reward_history) / len(self.reward_history) if len(self.reward_history) > 0 else 0.0
         }
         
         ctx["diagnostics"] = diag_snapshot
