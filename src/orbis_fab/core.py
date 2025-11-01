@@ -149,6 +149,11 @@ class FABCore:
         self.z_time_limit_ms: float = float(z_time_limit_ms)
         self.z_cb_cooldown_ticks: int = int(z_cb_cooldown_ticks)
         self.z_cb_remaining: int = 0  # ticks to force fallback to 'fab'
+
+        # PR#5.3.1: Circuit breaker observability (reasons + counters)
+        self.z_cb_reason: str = ""  # Last CB trigger reason ('timeout'/'exception'/'unavailable')
+        self.z_cb_open_count: int = 0  # Total CB opens across session
+        self.z_cb_reason_counts: dict[str, int] = {"timeout": 0, "exception": 0, "unavailable": 0}
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -604,10 +609,17 @@ class FABCore:
             self.z_last_diversity_gain = max(0.0, z_variance - self.z_last_baseline_div)
             self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
 
-        except Exception:
-            # Open circuit breaker and fallback to FAB selector
-            self.z_cb_remaining = max(self.z_cb_cooldown_ticks, 1)
-            self.ab_last_arm = "fab"  # Mark fallback in diagnostics
+        except Exception as e:
+            # PR#5.3.1: Determine CB reason from exception type
+            if isinstance(e, TimeoutError):
+                reason = "timeout"
+            elif isinstance(e, RuntimeError) and "unavailable" in str(e).lower():
+                reason = "unavailable"
+            else:
+                reason = "exception"
+            
+            # Open circuit breaker with reason tracking
+            self._z_open_circuit_breaker(reason)
             try:
                 self.z_last_latency_ms = (time.perf_counter() - locals().get("t_start", time.perf_counter())) * 1000.0
             except Exception:
@@ -615,6 +627,18 @@ class FABCore:
             self.z_last_diversity_gain = 0.0
             self.z_last_baseline_div = 0.0
             return self._fill_with_fab_selector(z)
+    
+    def _z_open_circuit_breaker(self, reason: str) -> None:
+        """PR#5.3.1: Open circuit breaker with tracking.
+        
+        Args:
+            reason: CB trigger reason ('timeout', 'exception', 'unavailable')
+        """
+        self.z_cb_remaining = max(self.z_cb_cooldown_ticks, 1)
+        self.z_cb_reason = reason
+        self.z_cb_open_count += 1
+        self.z_cb_reason_counts[reason] = self.z_cb_reason_counts.get(reason, 0) + 1
+        self.ab_last_arm = "fab"  # Mark fallback in diagnostics
     
     def _z_percentile(self, values: list[float], p: float) -> float:
         """PR#5.2: Calculate percentile from sorted values.
@@ -807,7 +831,10 @@ class FABCore:
             "z_gain_p99": self._z_percentile(list(self.z_gain_window), 0.99),
             "z_window_size": len(self.z_latency_window),
             "zspace_cb_open": self.z_cb_remaining > 0,
-            "zspace_cb_cooldown_remaining": int(self.z_cb_remaining)
+            "zspace_cb_cooldown_remaining": int(self.z_cb_remaining),
+            "zspace_cb_reason": self.z_cb_reason,
+            "zspace_cb_open_count": self.z_cb_open_count,
+            "zspace_cb_reason_counts": dict(self.z_cb_reason_counts)
         }
         
         ctx["diagnostics"] = diag_snapshot
