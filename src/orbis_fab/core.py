@@ -134,6 +134,15 @@ class FABCore:
         self.ab_diversity_gain_sum: dict[str, float] = {"fab": 0.0, "z-space": 0.0}
         self._ab_stats_last_tick: int = -1  # guard to avoid double-count per tick
         
+        # PR#5.2: EMA and sliding window for z-space metrics
+        self.z_ema_alpha: float = 0.1  # EMA smoothing factor (faster reaction)
+        self.z_latency_ema: float = 0.0  # Exponential moving average of z_latency_ms
+        self.z_gain_ema: float = 0.0  # Exponential moving average of z_diversity_gain
+        self.z_window_size: int = 100  # Sliding window size for percentiles
+        from collections import deque
+        self.z_latency_window: deque = deque(maxlen=self.z_window_size)  # Last N latencies
+        self.z_gain_window: deque = deque(maxlen=self.z_window_size)  # Last N gains
+        
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
         self.session_seed = hash_to_seed(self.session_id)  # Cache to avoid rehashing on every fill()
@@ -592,28 +601,78 @@ class FABCore:
         # PR#2: Record latency
         self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
     
+    def _z_percentile(self, values: list[float], p: float) -> float:
+        """PR#5.2: Calculate percentile from sorted values.
+        
+        Args:
+            values: List of numeric values
+            p: Percentile (0.0-1.0, e.g., 0.95 for p95)
+        
+        Returns:
+            Percentile value, or 0.0 if empty
+        """
+        if not values:
+            return 0.0
+        sorted_vals = sorted(values)
+        k = (len(sorted_vals) - 1) * p
+        f = int(k)
+        c = f + 1
+        if c >= len(sorted_vals):
+            return sorted_vals[-1]
+        # Linear interpolation between floor and ceil
+        return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
+    
     def _ab_safe_avg(self, s: float, n: int) -> float:
         """PR#5.1: Safe division for averages (avoid division by zero)"""
         return s / n if n > 0 else 0.0
 
     def _ab_record_metrics_for_current_tick(self) -> None:
-        """PR#5.1: Update per-arm counters and sums exactly once per tick.
+        """PR#5.1/5.2: Update per-arm counters and z-metrics exactly once per tick.
         
-        Relies on self.ab_last_arm set in fill(). For 'z-space' arm,
-        records real z-metrics; for 'fab' arm, records zeros (no z-metrics).
+        Updates:
+        - PR#5.1: A/B arm counters/sums (only if ab_shadow_enabled)
+        - PR#5.2: Z-Space EMA/window (always for z-space selector)
+        
         Guard (_ab_stats_last_tick) prevents double-counting on multiple mix() calls.
         """
-        if not self.ab_shadow_enabled:
-            return
         if self._ab_stats_last_tick == self.current_tick:
             return
+        
         arm = self.ab_last_arm
         if arm not in ("fab", "z-space"):
             return
+        
+        # PR#5.2: Always update EMA/window for z-space (regardless of A/B)
+        if arm == "z-space":
+            latency = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
+            gain = float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
+            
+            # Update EMA (exponential moving average)
+            z_count = self.ab_arm_counts.get("z-space", 0)
+            if z_count == 0:
+                # First value: initialize EMA
+                self.z_latency_ema = latency
+                self.z_gain_ema = gain
+            else:
+                # EMA update: new_ema = alpha * new_value + (1 - alpha) * old_ema
+                self.z_latency_ema = self.z_ema_alpha * latency + (1 - self.z_ema_alpha) * self.z_latency_ema
+                self.z_gain_ema = self.z_ema_alpha * gain + (1 - self.z_ema_alpha) * self.z_gain_ema
+            
+            # Update sliding window (deque auto-evicts oldest when full)
+            self.z_latency_window.append(latency)
+            self.z_gain_window.append(gain)
+        
+        # PR#5.1: Update A/B counters/sums (only if A/B enabled)
+        if not self.ab_shadow_enabled:
+            self._ab_stats_last_tick = self.current_tick
+            return
+        
         self.ab_arm_counts[arm] += 1
         if arm == "z-space":
-            self.ab_latency_sum[arm] += float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
-            self.ab_diversity_gain_sum[arm] += float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
+            latency = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
+            gain = float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
+            self.ab_latency_sum[arm] += latency
+            self.ab_diversity_gain_sum[arm] += gain
         else:
             self.ab_latency_sum[arm] += 0.0
             self.ab_diversity_gain_sum[arm] += 0.0
@@ -722,7 +781,16 @@ class FABCore:
             "ab_diversity_gain_avg": {
                 "fab": self._ab_safe_avg(self.ab_diversity_gain_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)),
                 "z-space": self._ab_safe_avg(self.ab_diversity_gain_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)),
-            }
+            },
+            "z_latency_ema": self.z_latency_ema,
+            "z_gain_ema": self.z_gain_ema,
+            "z_latency_p50": self._z_percentile(list(self.z_latency_window), 0.50),
+            "z_latency_p95": self._z_percentile(list(self.z_latency_window), 0.95),
+            "z_latency_p99": self._z_percentile(list(self.z_latency_window), 0.99),
+            "z_gain_p50": self._z_percentile(list(self.z_gain_window), 0.50),
+            "z_gain_p95": self._z_percentile(list(self.z_gain_window), 0.95),
+            "z_gain_p99": self._z_percentile(list(self.z_gain_window), 0.99),
+            "z_window_size": len(self.z_latency_window)
         }
         
         ctx["diagnostics"] = diag_snapshot

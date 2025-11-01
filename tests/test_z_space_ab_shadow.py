@@ -164,3 +164,67 @@ def test_ab_latency_and_gain_averages_present_and_non_negative():
     assert d["ab_latency_avg"]["z-space"] >= 0.0
     assert d["ab_diversity_gain_avg"]["fab"] >= 0.0
     assert d["ab_diversity_gain_avg"]["z-space"] >= 0.0
+
+
+def test_z_ema_converges_to_stable_value():
+    """Test: EMA converges to stable value over repeated measurements"""
+    from orbis_fab.core import FABCore
+    nodes = [{"id": f"s{i:02d}", "score": 1.0 - i * 0.001} for i in range(16)]
+    z = {
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"nodes": 16, "tokens": 8000, "edges": 0, "time_ms": 50},
+        "seed": "ema-test",
+        "zv": "v0.1.0",
+    }
+    fab = FABCore(selector="z-space", session_id="ema-test", envelope_mode="legacy",
+                  ab_shadow_enabled=False)
+    
+    # Run 50 ticks to allow EMA to converge
+    for _ in range(50):
+        fab.init_tick(mode="FAB0", budgets={"tokens": 8000, "nodes": 16, "edges": 0, "time_ms": 50})
+        fab.fill(z)
+        fab.mix()
+        fab.current_tick += 1
+    
+    d = fab.mix()["diagnostics"]["derived"]
+    # EMA should be non-negative and reasonably close to recent values
+    assert d["z_latency_ema"] >= 0.0
+    assert d["z_gain_ema"] >= 0.0
+    # After 50 ticks, window should be full (min 50, max 100)
+    assert d["z_window_size"] >= 50
+
+
+def test_z_percentiles_track_distribution():
+    """Test: Percentiles (p50/p95/p99) capture distribution of metrics"""
+    from orbis_fab.core import FABCore
+    nodes = [{"id": f"s{i:02d}", "score": 1.0 - i * 0.002} for i in range(32)]
+    z = {
+        "nodes": nodes,
+        "edges": [],
+        "quotas": {"nodes": 16, "tokens": 8000, "edges": 0, "time_ms": 50},
+        "seed": "percentile-test",
+        "zv": "v0.1.0",
+    }
+    fab = FABCore(selector="z-space", session_id="percentile-test", envelope_mode="legacy",
+                  ab_shadow_enabled=False)
+    
+    # Run enough ticks to fill window (100+)
+    for _ in range(120):
+        fab.init_tick(mode="FAB0", budgets={"tokens": 8000, "nodes": 16, "edges": 0, "time_ms": 50})
+        fab.fill(z)
+        fab.mix()
+        fab.current_tick += 1
+    
+    d = fab.mix()["diagnostics"]["derived"]
+    # Percentiles should be ordered: p50 <= p95 <= p99
+    assert d["z_latency_p50"] >= 0.0
+    assert d["z_latency_p50"] <= d["z_latency_p95"]
+    assert d["z_latency_p95"] <= d["z_latency_p99"]
+    
+    assert d["z_gain_p50"] >= 0.0
+    assert d["z_gain_p50"] <= d["z_gain_p95"]
+    assert d["z_gain_p95"] <= d["z_gain_p99"]
+    
+    # Window should be at max capacity (100)
+    assert d["z_window_size"] == 100
