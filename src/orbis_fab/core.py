@@ -67,7 +67,10 @@ class FABCore:
         hysteresis_rate_limit: int = 1000,
         min_stream_for_upgrade: int = 8,
         session_id: str | None = None,
-        selector: str = "fab"
+        selector: str = "fab",
+        ab_shadow_enabled: bool = False,
+        ab_ratio: float = 0.5,
+        shadow_selector: str = "z-space"
     ):
         """Initialize FAB with configurable envelope behavior and node selection
         
@@ -113,6 +116,17 @@ class FABCore:
         if selector not in ("fab", "z-space"):
             raise ValueError(f"selector must be 'fab' or 'z-space', got {selector}")
         self.selector = selector
+        
+        # Phase 2.5: Shadow A/B selector (PR#5)
+        if shadow_selector not in ("fab", "z-space"):
+            raise ValueError(f"shadow_selector must be 'fab' or 'z-space', got {shadow_selector}")
+        if not (0.0 <= ab_ratio <= 1.0):
+            raise ValueError(f"ab_ratio must be in [0.0, 1.0], got {ab_ratio}")
+        self.ab_shadow_enabled = ab_shadow_enabled
+        self.ab_ratio = float(ab_ratio)
+        self.shadow_selector = shadow_selector
+        self.ab_last_used: bool = False
+        self.ab_last_arm: str = self.selector  # effective selector used in last fill
         
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
@@ -216,8 +230,28 @@ class FABCore:
         """
         self.diag.inc_fills()
         
-        # Route to selector-specific implementation
-        if self.selector == "z-space":
+        # Route to selector-specific implementation (with Shadow A/B if enabled)
+        chosen_selector = self.selector
+        self.ab_last_used = False
+        self.ab_last_arm = chosen_selector
+
+        if self.ab_shadow_enabled:
+            # Deterministic A/B choice per tick using combined seeds (z.seed, session_seed, current_tick)
+            z_seed = hash_to_seed(str(z.get("seed", "fab")))
+            tick_seed = self.current_tick
+            ab_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
+            # Use Python's Random via SeededRNG to draw a stable float in [0,1)
+            ab_rng = SeededRNG(seed=ab_seed)
+            roll = ab_rng.random()
+            if roll < self.ab_ratio:
+                chosen_selector = self.shadow_selector
+                self.ab_last_used = True
+                self.ab_last_arm = chosen_selector
+            else:
+                self.ab_last_used = False
+                self.ab_last_arm = self.selector
+
+        if chosen_selector == "z-space":
             return self._fill_with_z_space(z)
         else:
             # Default: original FAB selection (Phase A/B/C+)
@@ -619,8 +653,8 @@ class FABCore:
         mmr_avg_penalty = self.mmr_rebalancer.stats.avg_penalty
         mmr_max_similarity = self.mmr_rebalancer.stats.max_similarity
         
-        # PR#2: Z-Space diagnostics
-        z_selector_used = self.selector == "z-space"
+        # PR#2/PR#5: Z-Space diagnostics (use ab_last_arm for A/B compatibility)
+        z_selector_used = self.ab_last_arm == "z-space"
         z_diversity_gain = self.z_last_diversity_gain
         z_latency_ms = self.z_last_latency_ms
         
@@ -633,7 +667,10 @@ class FABCore:
             "z_selector_used": z_selector_used,
             "z_baseline_diversity": self.z_last_baseline_div,  # PR#3
             "z_diversity_gain": z_diversity_gain,
-            "z_latency_ms": z_latency_ms
+            "z_latency_ms": z_latency_ms,
+            "ab_shadow_enabled": self.ab_shadow_enabled,
+            "ab_ratio": self.ab_ratio,
+            "ab_arm": self.ab_last_arm
         }
         
         ctx["diagnostics"] = diag_snapshot
