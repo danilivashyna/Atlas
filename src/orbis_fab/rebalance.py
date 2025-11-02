@@ -30,7 +30,7 @@ Usage:
     )
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Tuple, Optional
 import math
 
@@ -72,7 +72,7 @@ class RebalanceStats:
 class MMRRebalancer:
     """MMR-like rebalancer for FAB node selection"""
     
-    def __init__(self, config: RebalanceConfig = None):
+    def __init__(self, config: Optional[RebalanceConfig] = None):
         self.config = config or RebalanceConfig()
         self.stats = RebalanceStats()
     

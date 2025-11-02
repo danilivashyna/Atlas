@@ -77,21 +77,24 @@ def _mmr_greedy(
         return []
     
     # Check for vec presence
-    with_vec = [n for n in candidates if isinstance(n.get("vec"), (list, tuple)) and len(n.get("vec")) > 0]
+    with_vec = [n for n in candidates if isinstance(n.get("vec"), (list, tuple)) and n.get("vec") and len(n.get("vec")) > 0]
     
     # Fallback: no vectors → pure score-sort
     if len(with_vec) == 0:
-        ordered = sorted(
-            [(n.get("id"), float(n.get("score", 0.0))) for n in candidates],
-            key=lambda p: (-p[1], p[0])  # Deterministic: score desc, id asc
-        )
-        return [i for i, _ in ordered[:k]]
+        ordered = [
+            (n.get("id"), float(n.get("score", 0.0))) 
+            for n in candidates 
+            if n.get("id") is not None  # Filter out nodes without IDs
+        ]
+        ordered.sort(key=lambda p: (-p[1], p[0]))  # Deterministic: score desc, id asc
+        return [str(i) for i, _ in ordered[:k]]  # Ensure str type for IDs
     
     # Precompute norms for all nodes with vectors
     norms: Dict[str, float] = {}
     for n in with_vec:
         vid = n.get("id")
-        norms[vid] = _vec_norm(n.get("vec"))
+        if vid is not None:  # Guard against None IDs
+            norms[str(vid)] = _vec_norm(n.get("vec"))
     
     # Initialize: select first node (highest score, deterministic tie-break)
     ordered = sorted(with_vec, key=lambda n: (-float(n.get("score", 0.0)), str(n.get("id"))))
