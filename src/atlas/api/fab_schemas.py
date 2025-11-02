@@ -114,7 +114,7 @@ class FABContext(BaseModel):
     tokens: list[FABToken] = Field(default_factory=list, description="Tokens in window")
     vectors: list[FABVector] = Field(default_factory=list, description="Vectors in window")
     links: list[FABLink] = Field(default_factory=list, description="Links between vectors")
-    meta: FABMeta = Field(default_factory=lambda: FABMeta(), description="Window metadata + E3 metrics")
+    meta: FABMeta = Field(default_factory=FABMeta, description="Window metadata + E3 metrics")
 
     @field_validator("tokens")
     @classmethod

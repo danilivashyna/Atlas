@@ -17,7 +17,7 @@ from atlas.api.fab_routes import create_fab_router
 
 
 @pytest.fixture
-def app() -> FastAPI:
+def fab_app() -> FastAPI:
     """Create minimal FastAPI app with FAB router."""
     app = FastAPI()
     app.include_router(create_fab_router())
@@ -25,9 +25,9 @@ def app() -> FastAPI:
 
 
 @pytest.fixture
-def client(app: FastAPI) -> TestClient:
+def client(fab_app: FastAPI) -> TestClient:
     """Create test client."""
-    return TestClient(app)
+    return TestClient(fab_app)
 
 
 @pytest.fixture
