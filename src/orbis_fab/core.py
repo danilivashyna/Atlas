@@ -41,7 +41,7 @@ from .rebalance import RebalanceConfig, MMRRebalancer
 from .seeding import SeededRNG, hash_to_seed, combine_seeds
 from .diagnostics import Diagnostics
 import secrets
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, cast
 
 # Phase 2: Z-Space integration
 # Ensure ZSpaceShim is always defined for type-checkers; guard calls with HAS_ZSPACE at runtime.
@@ -208,8 +208,7 @@ class FABCore:
         self.z_md_factor: float = float(z_md_factor)
         # Текущее адаптивное значение (зажимаем между min/max и hard cap)
         self.z_limit_current_ms: float = max(self.z_limit_min_ms, min(self.z_time_limit_ms, self.z_limit_max_ms))
-        from collections import deque as _deque
-        self.z_limit_history = _deque(maxlen=50)
+        self.z_limit_history = deque(maxlen=50)
         self.z_limit_last_adjust: str = ""
 
         # PR#5.5: Meta-adaptation (self-tuning target latency)
@@ -255,8 +254,7 @@ class FABCore:
         self.reward_pressure_target: float = float(reward_pressure_target)
         self.reward_last: float = 0.0
         self.reward_ema: float = 0.0
-        from collections import deque as _deque2
-        self.reward_history = _deque2(maxlen=self.reward_window)
+        self.reward_history = deque(maxlen=self.reward_window)
 
         # PR#6.0: SELF-Token Loop state
         self.selfloop_enabled: bool = bool(selfloop_enabled)
@@ -664,24 +662,30 @@ class FABCore:
             
             # Use ZSpaceShim for deterministic selection
             global_cap = self.st.global_win.cap_nodes
-            z_compat = {
+            
+            # Normalize z so that 'nodes' and 'edges' are concrete lists (not Sequence)
+            # This satisfies ZSpaceShim type requirements which expect list[ZNode], not Sequence[ZNode]
+            z_norm = {
                 "nodes": list(z.get("nodes", [])),
                 "edges": list(z.get("edges", [])),
                 "quotas": z.get("quotas", {}),
                 "seed": z.get("seed", "fab"),
                 "zv": z.get("zv", "v0.1.0"),
             }
-            # Cast to ZSliceLite for type checkers; runtime content is identical
-            z_compat_t = cast(ZSliceLite, z_compat)
-            stream_ids = ZSpaceShim.select_topk_for_stream(z_compat_t, k=stream_cap, rng=self.rng._rng)
+            # Cast to ZSliceLite; suppress type checker warning since we've manually ensured list types
+            z_compat_l: ZSliceLite = cast(ZSliceLite, z_norm)  # type: ignore[assignment]
+            
+            # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
+            stream_ids = ZSpaceShim.select_topk_for_stream(z_compat_l, k=stream_cap, rng=self.rng._rng)  # type: ignore[arg-type]
 
             # Timeout check after stream selection
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             if elapsed_ms > effective_limit_ms:
                 raise TimeoutError(f"z-space selection time budget exceeded after stream ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
 
+            # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
             global_ids = ZSpaceShim.select_topk_for_global(
-                z_compat_t, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng
+                z_compat_l, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng  # type: ignore[arg-type]
             )
             
             # Map IDs back to nodes
