@@ -118,7 +118,7 @@ def autoscale_controller():
     """Background autoscaling task."""
     from atlas.metrics.mensum import metrics_ns
 
-    global autoscale_beam  # Only autoscale_beam is actually modified
+    global autoscale_beam, autoscale_timer  # autoscale_beam is modified, autoscale_timer is reassigned
 
     try:
         # Check if enabled
@@ -350,6 +350,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     # Create error response
     error_response = ErrorResponse(
+        error=True,  # Required field for error responses
         error_type=error_type,
         message=message,
         trace_id=trace_id,
@@ -489,7 +490,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
 
         # Parse reasoning
         text = result.get("text", "")
-        reasoning_text = result.get("reasoning", "")
+        # reasoning_text = result.get("reasoning", "")  # TODO: Use for evidence extraction
 
         # Extract dimension contributions
         dimensions_reasoning = []
@@ -519,7 +520,8 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
 
         # Graceful degradation: return text without reasoning
         try:
-            text = semantic_space.decode(np.array(request.vector))
+            decoded = semantic_space.decode(np.array(request.vector))
+            text = _ensure_str(decoded)  # Convert to str (handles dict/None cases)
             return DecodeResponse(text=text, reasoning=[], explainable=False, trace_id=trace_id)
         except Exception:
             raise HTTPException(status_code=500, detail="Decode failed completely")
@@ -805,9 +807,6 @@ async def manipulate_hierarchical(
 async def favicon():
     """Serve favicon"""
     try:
-        import os
-
-        static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
         favicon_path = os.path.join(static_dir, "favicon.ico")
         if os.path.exists(favicon_path):
             return FileResponse(favicon_path, media_type="image/x-icon")
