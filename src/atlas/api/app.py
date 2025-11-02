@@ -443,6 +443,9 @@ async def encode_text(request: EncodeRequest, req: Request) -> EncodeResponse:
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
+    if semantic_space is None:
+        raise HTTPException(status_code=500, detail="Semantic space not initialized")
+
     try:
         # Encode (we don't log the text)
         logger.info("Encoding text (trace_id=%s, length=%d)", trace_id, len(request.text))
@@ -467,6 +470,9 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
     **Graceful Degradation**: If reasoning fails, returns text with explainable=false.
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+
+    if semantic_space is None:
+        raise HTTPException(status_code=500, detail="Semantic space not initialized")
 
     try:
         logger.info("Decoding vector (trace_id=%s)", trace_id)
@@ -529,6 +535,9 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
+    if semantic_space is None:
+        raise HTTPException(status_code=500, detail="Semantic space not initialized")
+
     try:
         logger.info("Explaining text (trace_id=%s, length=%d)", trace_id, len(request.text))
 
@@ -588,6 +597,9 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
     If evidence extraction fails, falls back to simple truncation/expansion.
     """
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
+
+    if semantic_space is None:
+        raise HTTPException(status_code=500, detail="Semantic space not initialized")
 
     # Check feature flag
     if SUMMARY_MODE == "off":
