@@ -4,21 +4,25 @@ Validates that diagnostics counters/gauges are correctly integrated
 into Phase A workflows (fill/mix/step_stub).
 """
 
-import pytest
+from typing import cast
 from orbis_fab import FABCore, Budgets
+from orbis_fab.types import ZSliceLite
 
 
-def make_z_slice(num_nodes: int = 100, base_score: float = 0.9):
+def make_z_slice(num_nodes: int = 100, base_score: float = 0.9) -> ZSliceLite:
     """Helper: Create test Z-slice"""
-    return {  # type: ignore[return-value]
-        "nodes": [
-            {"id": f"n{i}", "score": max(0.0, base_score - i * 0.001)} for i in range(num_nodes)
-        ],
-        "edges": [],
-        "quotas": {"tokens": 4096, "nodes": num_nodes, "edges": 0, "time_ms": 30},
-        "seed": "test-diag-integration",
-        "zv": "0.1",
-    }
+    return cast(
+        ZSliceLite,
+        {
+            "nodes": [
+                {"id": f"n{i}", "score": max(0.0, base_score - i * 0.001)} for i in range(num_nodes)
+            ],
+            "edges": [],
+            "quotas": {"tokens": 4096, "nodes": num_nodes, "edges": 0, "time_ms": 30},
+            "seed": "test-diag-integration",
+            "zv": "0.1",
+        },
+    )
 
 
 def test_diagnostics_counters_in_basic_flow():
@@ -142,19 +146,22 @@ def test_diagnostics_golden_snapshot():
     budgets: Budgets = {"tokens": 4096, "nodes": 128, "edges": 0, "time_ms": 30}
 
     # Fixed seed Z-slice
-    z_slice = {
-        "nodes": [
-            {"id": "n0", "score": 0.95},
-            {"id": "n1", "score": 0.90},
-            {"id": "n2", "score": 0.85},
-            {"id": "n3", "score": 0.80},
-            {"id": "n4", "score": 0.75},
-        ],
-        "edges": [],
-        "quotas": {"tokens": 4096, "nodes": 128, "edges": 0, "time_ms": 30},
-        "seed": "golden-snapshot-42",
-        "zv": "0.1",
-    }
+    z_slice = cast(
+        ZSliceLite,
+        {
+            "nodes": [
+                {"id": "n0", "score": 0.95},
+                {"id": "n1", "score": 0.90},
+                {"id": "n2", "score": 0.85},
+                {"id": "n3", "score": 0.80},
+                {"id": "n4", "score": 0.75},
+            ],
+            "edges": [],
+            "quotas": {"tokens": 4096, "nodes": 128, "edges": 0, "time_ms": 30},
+            "seed": "golden-snapshot-42",
+            "zv": "0.1",
+        },
+    )
 
     # Execute deterministic flow
     fab.init_tick(mode="FAB0", budgets=budgets)
