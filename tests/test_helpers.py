@@ -8,7 +8,9 @@ These helpers ensure type-safe parameter passing to FABCore across all test file
 eliminating reportArgumentType errors from dict-based configuration merging.
 """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, cast
+from orbis_fab.types import Budgets
+from orbis_z import ZSliceLite  # Use orbis_z definition for Z-space tests
 
 
 def as_str(v: object, default: str = "") -> str:
@@ -84,3 +86,66 @@ def as_weights4(
         if len(parts) == 4:
             return (as_float(parts[0]), as_float(parts[1]), as_float(parts[2]), as_float(parts[3]))
     return default
+
+
+# TypedDict factory helpers for test data construction
+
+def make_budgets(
+    tokens: int = 8000,
+    nodes: int = 8,
+    edges: int = 0,
+    time_ms: int = 50
+) -> Budgets:
+    """Create type-safe Budgets TypedDict for testing.
+    
+    IMPORTANT: Field is 'time_ms' (not 'time'). Legacy tests with 'time' field
+    will cause reportArgumentType errors.
+    """
+    return cast(Budgets, {
+        "tokens": tokens,
+        "nodes": nodes,
+        "edges": edges,
+        "time_ms": time_ms,
+    })
+
+
+def make_z(
+    nodes: Optional[list] = None,
+    edges: Optional[list] = None,
+    seed: str = "test-z",
+    tokens: int = 8000,
+    nodes_quota: int = 128,
+    edges_quota: int = 0,
+    time_ms: int = 30
+) -> ZSliceLite:
+    """Create type-safe ZSliceLite TypedDict for testing.
+    
+    Args:
+        nodes: List of node dicts (default: 10 dummy nodes)
+        edges: List of edge dicts (default: empty)
+        seed: Z-slice seed for determinism
+        tokens: Token quota
+        nodes_quota: Node quota
+        edges_quota: Edge quota
+        time_ms: Time budget in ms
+        
+    Note: Returns nodes/edges as lists (mutable sequences) which are
+    compatible with Sequence[ZNode]/Sequence[ZEdge] type annotations.
+    """
+    if nodes is None:
+        nodes = [{"id": f"n{i}", "score": 1.0 - i * 0.01} for i in range(10)]
+    if edges is None:
+        edges = []
+    
+    return cast(ZSliceLite, {
+        "nodes": nodes,  # list is subtype of Sequence
+        "edges": edges,  # list is subtype of Sequence
+        "quotas": {
+            "tokens": tokens,
+            "nodes": nodes_quota,
+            "edges": edges_quota,
+            "time_ms": time_ms
+        },
+        "seed": seed,
+        "zv": "v0.1.0",
+    })

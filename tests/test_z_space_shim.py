@@ -9,7 +9,9 @@ Test coverage:
 - Edge cases (empty slice, zero budget, etc.)
 """
 
+from typing import cast
 from orbis_z import ZSliceLite, ZSpaceShim
+from tests.test_helpers import make_z
 
 
 def test_zspace_shim_deterministic_selection():
@@ -21,19 +23,16 @@ def test_zspace_shim_deterministic_selection():
     - Identical ordering (not just set equality)
     - Works across different k values
     """
-    z_slice: ZSliceLite = {
-        "nodes": [
+    z_slice = make_z(
+        nodes=[
             {"id": "n1", "score": 0.95},
             {"id": "n2", "score": 0.87},
             {"id": "n3", "score": 0.92},
             {"id": "n4", "score": 0.78},
             {"id": "n5", "score": 0.99},
         ],
-        "edges": [],
-        "quotas": {"tokens": 8000, "nodes": 64, "edges": 128, "time_ms": 500},
-        "seed": "determinism-test-123",
-        "zv": "v0.1.0"
-    }
+        seed="determinism-test-123"
+    )
     
     # Run selection twice with same seed
     selected_1 = ZSpaceShim.select_topk_for_stream(z_slice, k=3)
@@ -235,11 +234,11 @@ def test_zspace_slice_validation_missing_field():
     """
     Test: Missing required field fails validation.
     """
-    z_slice_incomplete = {
+    z_slice_incomplete = cast(ZSliceLite, {
         "nodes": [{"id": "n1", "score": 0.8}],
         "edges": [],
         # Missing: quotas, seed, zv
-    }
+    })
     
     valid, error = ZSpaceShim.validate_slice(z_slice_incomplete)
     assert valid is False
@@ -315,20 +314,18 @@ def test_zspace_different_seeds_different_order():
     - Seed influences selection (not just score)
     - Reproducibility per seed
     """
-    z_slice_base = {
-        "nodes": [
+    z_slice_base = make_z(
+        nodes=[
             {"id": "a", "score": 0.5},
             {"id": "b", "score": 0.5},
             {"id": "c", "score": 0.5},
         ],
-        "edges": [],
-        "quotas": {"tokens": 8000, "nodes": 64, "edges": 128, "time_ms": 500},
-        "zv": "v0.1.0"
-    }
+        seed="seed-base"
+    )
     
     # Same scores, different seeds
-    z_seed1 = {**z_slice_base, "seed": "seed-A"}
-    z_seed2 = {**z_slice_base, "seed": "seed-B"}
+    z_seed1 = cast(ZSliceLite, {**z_slice_base, "seed": "seed-A"})
+    z_seed2 = cast(ZSliceLite, {**z_slice_base, "seed": "seed-B"})
     
     # Select with different seeds
     selected_1 = ZSpaceShim.select_topk_for_stream(z_seed1, k=2)
@@ -375,13 +372,7 @@ def test_vec_mmr_improves_diversity_over_score_sort():
     for i in range(16):
         nodes.append({"id": f"b{i}", "score": 0.94 - i * 0.0001, "vec": j(0.0, 1.0)})
     
-    z_slice = {  # type: ignore
-        "nodes": nodes,
-        "edges": [],
-        "quotas": {"tokens": 8000, "nodes": 32, "edges": 128, "time_ms": 500},
-        "seed": "vec-mmr-diversity",
-        "zv": "v0.1.0"
-    }
+    z_slice = make_z(nodes=nodes, seed="vec-mmr-diversity")
     
     ids = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng)
     
@@ -420,13 +411,7 @@ def test_mixed_vec_presence_fallback_determinism():
     for i in range(8):
         nodes.append({"id": f"n{i}", "score": 0.89 - i * 0.001})
     
-    z_slice = {  # type: ignore
-        "nodes": nodes,
-        "edges": [],
-        "quotas": {"tokens": 8000, "nodes": 16, "edges": 128, "time_ms": 500},
-        "seed": "mixed-vec",
-        "zv": "v0.1.0"
-    }
+    z_slice = make_z(nodes=nodes, seed="mixed-vec")
     
     ids1 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng1)
     ids2 = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng2)
@@ -454,13 +439,7 @@ def test_vec_mmr_pure_score_fallback_when_no_vecs():
     # All nodes: NO vec field
     nodes = [{"id": f"s{i}", "score": 1.0 - i * 0.001} for i in range(16)]
     
-    z_slice = {  # type: ignore
-        "nodes": nodes,
-        "edges": [],
-        "quotas": {"tokens": 8000, "nodes": 16, "edges": 128, "time_ms": 500},
-        "seed": "no-vecs",
-        "zv": "v0.1.0"
-    }
+    z_slice = make_z(nodes=nodes, seed="no-vecs")
     
     ids = ZSpaceShim.select_topk_for_stream(z_slice, k=8, rng=rng)
     

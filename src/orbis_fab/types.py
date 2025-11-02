@@ -13,7 +13,7 @@ Invariants:
 """
 
 from enum import Enum
-from typing import TypedDict, Literal, Sequence, NotRequired
+from typing import TypedDict, Literal, NotRequired
 
 
 # FAB State Machine Modes
@@ -49,11 +49,11 @@ class ZSliceLite(TypedDict):
     Used by FAB.fill() to populate global/stream windows.
     Phase A: nodes only, edges reserved for future.
     """
-    nodes: Sequence[ZNode]     # Sorted by score descending
-    edges: Sequence[ZEdge]     # Reserved (empty in Phase A)
-    quotas: Budgets            # Original request budgets
-    seed: str                  # Selection seed/run_id
-    zv: str                    # Z-Selector version
+    nodes: list[ZNode]     # Sorted by score descending
+    edges: list[ZEdge]     # Reserved (empty in Phase A)
+    quotas: Budgets        # Original request budgets
+    seed: str              # Selection seed/run_id
+    zv: str                # Z-Selector version
 
 
 class Metrics(TypedDict):
