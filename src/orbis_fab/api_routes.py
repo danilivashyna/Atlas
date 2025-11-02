@@ -25,8 +25,10 @@ from .types import Budgets, ZSliceLite, FabMode
 
 # === Request/Response Models ===
 
+
 class ZNode(BaseModel):
     """Z-space node (vector representation)"""
+
     id: str
     score: float = Field(ge=0.0, le=1.0, description="Relevance score [0.0, 1.0]")
     # Optional: embedding vector (not used in Phase A/C)
@@ -35,22 +37,26 @@ class ZNode(BaseModel):
 
 class PushContextRequest(BaseModel):
     """Request to push Z-slice context into FAB"""
+
     mode: FabMode = Field(description="Target FAB mode (FAB0/FAB1/FAB2)")
     budgets: Budgets = Field(description="Fixed capacity for this tick")
     z_slice: Dict[str, Any] = Field(
         description="Z-slice with nodes/edges/quotas/seed",
-        examples=[{
-            "nodes": [{"id": "n1", "score": 0.95}, {"id": "n2", "score": 0.80}],
-            "edges": [],
-            "quotas": {"tokens": 4096, "nodes": 256, "edges": 0, "time_ms": 30},
-            "seed": "test-run-42",
-            "zv": "0.1"
-        }]
+        examples=[
+            {
+                "nodes": [{"id": "n1", "score": 0.95}, {"id": "n2", "score": 0.80}],
+                "edges": [],
+                "quotas": {"tokens": 4096, "nodes": 256, "edges": 0, "time_ms": 30},
+                "seed": "test-run-42",
+                "zv": "0.1",
+            }
+        ],
     )
 
 
 class PushContextResponse(BaseModel):
     """Response from push operation"""
+
     status: str = "ok"
     tick: int = Field(description="Current tick number")
     diagnostics: Dict[str, Any] = Field(description="Counters and gauges snapshot")
@@ -58,6 +64,7 @@ class PushContextResponse(BaseModel):
 
 class PullContextResponse(BaseModel):
     """Response from pull operation (current FAB state)"""
+
     mode: str = Field(description="Current FAB mode")
     global_size: int = Field(description="Global window size")
     stream_size: int = Field(description="Stream window size")
@@ -68,6 +75,7 @@ class PullContextResponse(BaseModel):
 
 class DecideRequest(BaseModel):
     """Request to run decision step"""
+
     stress: float = Field(ge=0.0, le=1.0, description="Load stress [0.0, 1.0]")
     self_presence: float = Field(ge=0.0, le=1.0, description="SELF token presence")
     error_rate: float = Field(ge=0.0, le=1.0, description="Error rate [0.0, 1.0]")
@@ -75,6 +83,7 @@ class DecideRequest(BaseModel):
 
 class DecideResponse(BaseModel):
     """Response from decision step"""
+
     mode: str = Field(description="Mode after decision")
     stable: bool = Field(description="Stability status")
     stable_ticks: int = Field(description="Consecutive stable ticks")
@@ -83,11 +92,13 @@ class DecideResponse(BaseModel):
 
 class ActResponse(BaseModel):
     """Response from act operation (no-op in Shadow Mode)"""
+
     status: str = "shadow_mode"
     message: str = "No external I/O in Shadow Mode v0.1"
 
 
 # === FAB Shadow Mode Router ===
+
 
 def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
     """Create FAB Shadow Mode API router
@@ -142,14 +153,12 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             ctx = fab.mix()
 
             return PushContextResponse(
-                status="ok",
-                tick=fab.current_tick,
-                diagnostics=ctx["diagnostics"]
+                status="ok", tick=fab.current_tick, diagnostics=ctx["diagnostics"]
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"FAB push failed: {str(e)}"
+                detail=f"FAB push failed: {str(e)}",
             )
 
     @router.get("/context/pull", response_model=PullContextResponse)
@@ -181,12 +190,12 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 stream_size=ctx["stream_size"],
                 global_precision=ctx["global_precision"],
                 stream_precision=ctx["stream_precision"],
-                diagnostics=ctx["diagnostics"]
+                diagnostics=ctx["diagnostics"],
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"FAB pull failed: {str(e)}"
+                detail=f"FAB pull failed: {str(e)}",
             )
 
     @router.post("/decide", response_model=DecideResponse)
@@ -212,9 +221,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
         """
         try:
             result = fab.step_stub(
-                stress=req.stress,
-                self_presence=req.self_presence,
-                error_rate=req.error_rate
+                stress=req.stress, self_presence=req.self_presence, error_rate=req.error_rate
             )
 
             # Get current diagnostics
@@ -224,12 +231,12 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 mode=result["mode"],
                 stable=result["stable"],
                 stable_ticks=result["stable_ticks"],
-                diagnostics=ctx["diagnostics"]
+                diagnostics=ctx["diagnostics"],
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"FAB decide failed: {str(e)}"
+                detail=f"FAB decide failed: {str(e)}",
             )
 
     @router.post("/act", response_model=ActResponse)
@@ -248,7 +255,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
         """
         return ActResponse(
             status="shadow_mode",
-            message="No external I/O in Shadow Mode v0.1. Future: Atlas writes, cache updates."
+            message="No external I/O in Shadow Mode v0.1. Future: Atlas writes, cache updates.",
         )
 
     return router

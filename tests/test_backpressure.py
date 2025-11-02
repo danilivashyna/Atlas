@@ -43,7 +43,7 @@ def test_backpressure_custom_thresholds():
     assert classify_backpressure(500, threshold_ok=1000, threshold_reject=2000) == "ok"
     assert classify_backpressure(1500, threshold_ok=1000, threshold_reject=2000) == "slow"
     assert classify_backpressure(2500, threshold_ok=1000, threshold_reject=2000) == "reject"
-    
+
     # Higher thresholds (more permissive)
     assert classify_backpressure(3000, threshold_ok=5000, threshold_reject=10000) == "ok"
     assert classify_backpressure(7000, threshold_ok=5000, threshold_reject=10000) == "slow"
@@ -53,12 +53,12 @@ def test_backpressure_custom_thresholds():
 def test_backpressure_boundary_conditions():
     """Verify exact boundary behavior"""
     # Default thresholds: ok=2000, reject=5000
-    
+
     # Just below ok threshold
     assert classify_backpressure(1999) == "ok"
     # At ok threshold
     assert classify_backpressure(2000) == "slow"
-    
+
     # Just below reject threshold
     assert classify_backpressure(4999) == "slow"
     # At reject threshold

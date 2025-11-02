@@ -156,7 +156,7 @@ class Diagnostics:
                 "stream_precision": self.stream_precision,
                 "stable_ticks": self.stable_ticks,
                 "cooldown_remaining": self.cooldown_remaining,
-            }
+            },
         }
 
     def reset(self) -> None:

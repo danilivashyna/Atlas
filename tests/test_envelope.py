@@ -58,12 +58,12 @@ def test_precision_boundary_conditions():
     assert assign_precision(0.79) == "mxfp6.0"
     # At hot threshold
     assert assign_precision(0.80) == "mxfp8.0"
-    
+
     # Just below warm-high threshold
     assert assign_precision(0.59) == "mxfp5.25"
     # At warm-high threshold
     assert assign_precision(0.60) == "mxfp6.0"
-    
+
     # Just below warm-low threshold
     assert assign_precision(0.39) == "mxfp4.12"
     # At warm-low threshold
@@ -74,21 +74,21 @@ def test_precision_monotonic_increase():
     """Precision increases monotonically with score"""
     scores = [0.1, 0.3, 0.5, 0.7, 0.9]
     precisions = [assign_precision(s) for s in scores]
-    
+
     # Extract numeric part (e.g., "mxfp6.0" → 6.0)
     def extract_bits(p: str) -> float:
         return float(p.replace("mxfp", ""))
-    
+
     bits = [extract_bits(p) for p in precisions]
-    
+
     # Verify monotonic increase
     assert bits == sorted(bits), "Precision should increase with score"
-    
+
     # Expected: [4.12, 4.12, 5.25, 6.0, 8.0]
     assert bits[0] == 4.12  # cold
     assert bits[2] == 5.25  # warm-low
-    assert bits[3] == 6.0   # warm-high
-    assert bits[4] == 8.0   # hot
+    assert bits[3] == 6.0  # warm-high
+    assert bits[4] == 8.0  # hot
 
 
 def test_precision_realistic_scores():
@@ -97,11 +97,11 @@ def test_precision_realistic_scores():
     assert assign_precision(0.92) == "mxfp8.0"
     assert assign_precision(0.88) == "mxfp8.0"
     assert assign_precision(0.81) == "mxfp8.0"
-    
+
     # Medium-relevance nodes
     assert assign_precision(0.72) == "mxfp6.0"
     assert assign_precision(0.68) == "mxfp6.0"
-    
+
     # Background/global nodes
     assert assign_precision(0.35) == "mxfp4.12"
     assert assign_precision(0.15) == "mxfp4.12"

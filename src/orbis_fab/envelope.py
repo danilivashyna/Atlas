@@ -24,8 +24,8 @@ Invariants:
 PRECISION_LEVELS = {
     "mxfp4.12": 0,  # cold
     "mxfp5.25": 1,  # warm-low
-    "mxfp6.0": 2,   # warm-high
-    "mxfp8.0": 3,   # hot
+    "mxfp6.0": 2,  # warm-high
+    "mxfp8.0": 3,  # hot
 }
 
 
@@ -77,9 +77,9 @@ def assign_precision(score: float) -> str:
         Future: Add hysteresis to prevent oscillation.
     """
     if score >= 0.80:
-        return "mxfp8.0"   # hot - highest precision
+        return "mxfp8.0"  # hot - highest precision
     if score >= 0.60:
-        return "mxfp6.0"   # warm-high
+        return "mxfp6.0"  # warm-high
     if score >= 0.40:
         return "mxfp5.25"  # warm-low
-    return "mxfp4.12"      # cold - global default
+    return "mxfp4.12"  # cold - global default

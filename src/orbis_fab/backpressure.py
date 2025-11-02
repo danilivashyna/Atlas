@@ -17,9 +17,7 @@ Invariants:
 
 
 def classify_backpressure(
-    tokens: int,
-    threshold_ok: int = 2000,
-    threshold_reject: int = 5000
+    tokens: int, threshold_ok: int = 2000, threshold_reject: int = 5000
 ) -> str:
     """Classify backpressure based on token count
 

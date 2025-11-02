@@ -3,7 +3,6 @@
 Tests MMR diversity, hysteresis rollout, and API cycles.
 """
 
-import pytest
 from typing import Optional, Any
 from orbis_fab import FABCore, Budgets
 from orbis_fab.api_routes import create_fab_router
@@ -124,7 +123,7 @@ def test_hysteresis_api_cycle_rollout():
     Hysteresis (dwell=3): upgrade only after 3 stable ticks
     """
     # Test both modes
-    for envelope_mode, expected_immediate_upgrade in [("legacy", True), ("hysteresis", False)]:
+    for envelope_mode, _expected_immediate_upgrade in [("legacy", True), ("hysteresis", False)]:
         fab = FABCore(envelope_mode=envelope_mode, hysteresis_dwell=3)
         app = FastAPI()
         router = create_fab_router(fab_core=fab)
@@ -290,11 +289,11 @@ def test_seed_discipline_deterministic():
     # Execute same flow on both instances
     fab1.init_tick(mode="FAB0", budgets=budgets)
     fab1.fill(z_slice)  # type: ignore[arg-type]
-    ctx1 = fab1.mix()
+    _ctx1 = fab1.mix()
 
     fab2.init_tick(mode="FAB0", budgets=budgets)
     fab2.fill(z_slice)  # type: ignore[arg-type]
-    ctx2 = fab2.mix()
+    _ctx2 = fab2.mix()
 
     # Results should be identical (same seed, same tick, same inputs)
     # Note: Session seed differs (id(fab1) != id(fab2)), so results may differ
@@ -407,7 +406,7 @@ def test_diversity_sanity_balanced_clusters():
 
     fab.init_tick(mode="FAB0", budgets=budgets)
     fab.fill(z_slice)  # type: ignore[arg-type]
-    ctx = fab.mix()
+    _ctx = fab.mix()
 
     # Check stream composition
     stream_nodes = fab.st.stream_win.nodes
@@ -647,19 +646,19 @@ def test_session_seed_caching():
 
     fab1.init_tick(mode="FAB0", budgets=budgets)
     fab1.fill(z_slice)  # type: ignore[arg-type]
-    ctx1 = fab1.mix()
+    _ctx1 = fab1.mix()
     stream1_ids = {n["id"] for n in fab1.st.stream_win.nodes}
 
     fab2.init_tick(mode="FAB0", budgets=budgets)
     fab2.fill(z_slice)  # type: ignore[arg-type]
-    ctx2 = fab2.mix()
+    _ctx2 = fab2.mix()
     stream2_ids = {n["id"] for n in fab2.st.stream_win.nodes}
 
     # Same session_id should produce same results
     assert stream1_ids == stream2_ids, "Cached session_seed should produce deterministic results"
 
 
-def test_unknown_precision_safe_hold():
+def test_unknown_precision_safe_hold(_tmp_path):  # noqa: ARG001
     """Unknown precision strings should return -1 and maintain current precision (P0.2)
 
     - precision_level("unknown") → -1
@@ -705,7 +704,7 @@ def test_unknown_precision_safe_hold():
     ), "Unknown precision should not trigger upgrade comparison"
 
 
-def test_runtime_envelope_mode_switch(tmp_path):
+def test_runtime_envelope_mode_switch(_tmp_path):  # noqa: ARG001
     """Switching envelope_mode mid-session should preserve correctness (P0.2)
 
     - Start in legacy mode, switch to hysteresis
@@ -797,7 +796,7 @@ def test_immediate_downgrade_with_rate_limit():
     }
 
     # Tick 1-10: high scores (should upgrade to mxfp8.0 or mxfp6.0)
-    for tick in range(10):
+    for _tick in range(10):
         fab.init_tick(mode="FAB0", budgets=budgets)
         fab.fill(z_high)  # type: ignore[arg-type]
         ctx = fab.mix()
@@ -818,7 +817,7 @@ def test_immediate_downgrade_with_rate_limit():
     }
 
     # Tick 11-13: drop score (should downgrade after dwell=2)
-    for tick in range(3):
+    for _tick in range(3):
         fab.init_tick(mode="FAB0", budgets=budgets)
         fab.fill(z_low)  # type: ignore[arg-type]
         ctx_downgrade = fab.mix()
@@ -893,7 +892,7 @@ def test_seeding_discipline_across_budgets():
 
         fab.init_tick(mode="FAB0", budgets=budgets)
         fab.fill(z_slice)  # type: ignore[arg-type]
-        ctx = fab.mix()
+        _ctx = fab.mix()
 
         stream_ids = {n["id"] for n in fab.st.stream_win.nodes}
         stream_selections[budget_size] = stream_ids

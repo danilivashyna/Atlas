@@ -70,10 +70,7 @@ class SeededRNG:
 
 
 def deterministic_sort(
-    items: List[Tuple[Any, float]],
-    rng: SeededRNG,
-    key_index: int = 1,
-    reverse: bool = True
+    items: List[Tuple[Any, float]], rng: SeededRNG, key_index: int = 1, reverse: bool = True
 ) -> List[Tuple[Any, float]]:
     """
     Sort items by score with deterministic tie-breaking.
@@ -93,16 +90,13 @@ def deterministic_sort(
         3. Higher tie-breaker wins ties
     """
     # Assign tie-breakers
-    items_with_tiebreaker = [
-        (item, score, rng.random())
-        for item, score in items
-    ]
+    items_with_tiebreaker = [(item, score, rng.random()) for item, score in items]
 
     # Sort by (score, tie_breaker)
     sorted_items = sorted(
         items_with_tiebreaker,
         key=lambda x: (x[key_index], x[2]),  # (score, tie_breaker)
-        reverse=reverse
+        reverse=reverse,
     )
 
     # Remove tie-breaker from result
@@ -110,9 +104,7 @@ def deterministic_sort(
 
 
 def deterministic_sample(
-    population: List[Tuple[Any, float]],
-    k: int,
-    rng: SeededRNG
+    population: List[Tuple[Any, float]], k: int, rng: SeededRNG
 ) -> List[Tuple[Any, float]]:
     """
     Sample k items from population (deterministic).
@@ -136,9 +128,7 @@ def deterministic_sample(
 
 
 def deterministic_top_k(
-    items: List[Tuple[Any, float]],
-    k: int,
-    rng: SeededRNG
+    items: List[Tuple[Any, float]], k: int, rng: SeededRNG
 ) -> List[Tuple[Any, float]]:
     """
     Select top-k items by score with deterministic tie-breaking.

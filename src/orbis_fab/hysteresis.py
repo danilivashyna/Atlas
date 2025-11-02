@@ -40,9 +40,10 @@ class HysteresisConfig:
     rate_limit_ticks enforces ≤1 change/sec.
     min_stream_for_upgrade prevents false upgrades on tiny samples.
     """
+
     # Hot band (mxfp8.0)
-    hot_up: float = 0.85        # Must cross to upgrade to hot
-    hot_down: float = 0.75      # Must drop below to downgrade from hot
+    hot_up: float = 0.85  # Must cross to upgrade to hot
+    hot_down: float = 0.75  # Must drop below to downgrade from hot
 
     # Warm-high band (mxfp6.0)
     warm_high_up: float = 0.65
@@ -72,17 +73,15 @@ class HysteresisState:
 
     Tracks current precision, dwell counter, and last change tick.
     """
-    current_precision: str = "mxfp4.12"   # Current precision
-    dwell_counter: int = 0                 # Ticks at current threshold
-    last_change_tick: int = 0              # Last tick when precision changed
-    target_precision: str = "mxfp4.12"     # Target precision (for dwell)
+
+    current_precision: str = "mxfp4.12"  # Current precision
+    dwell_counter: int = 0  # Ticks at current threshold
+    last_change_tick: int = 0  # Last tick when precision changed
+    target_precision: str = "mxfp4.12"  # Target precision (for dwell)
 
 
 def assign_precision_hysteresis(
-    score: float,
-    state: HysteresisState,
-    config: HysteresisConfig,
-    current_tick: int
+    score: float, state: HysteresisState, config: HysteresisConfig, current_tick: int
 ) -> Tuple[str, HysteresisState]:
     """Assign precision with hysteresis to prevent oscillation
 
@@ -148,7 +147,9 @@ def assign_precision_hysteresis(
     # Rate limit check
     ticks_since_last_change = current_tick - state.last_change_tick
     # Allow change if: never changed before OR enough time passed
-    can_change = (state.last_change_tick == 0) or (ticks_since_last_change >= config.rate_limit_ticks)
+    can_change = (state.last_change_tick == 0) or (
+        ticks_since_last_change >= config.rate_limit_ticks
+    )
 
     # Downgrade path (immediate if rate limit allows)
     if should_downgrade and can_change:
@@ -168,7 +169,7 @@ def assign_precision_hysteresis(
                 current_precision=new_precision,
                 dwell_counter=0,
                 last_change_tick=current_tick,
-                target_precision=new_precision
+                target_precision=new_precision,
             )
 
     # Upgrade/target change path (requires dwell time)
@@ -192,7 +193,7 @@ def assign_precision_hysteresis(
                     current_precision=target,
                     dwell_counter=0,
                     last_change_tick=current_tick,
-                    target_precision=target
+                    target_precision=target,
                 )
             else:
                 # Still dwelling
@@ -200,7 +201,7 @@ def assign_precision_hysteresis(
                     current_precision=current,
                     dwell_counter=new_dwell,
                     last_change_tick=state.last_change_tick,
-                    target_precision=target
+                    target_precision=target,
                 )
         else:
             # New target, reset dwell
@@ -208,7 +209,7 @@ def assign_precision_hysteresis(
                 current_precision=current,
                 dwell_counter=1,
                 last_change_tick=state.last_change_tick,
-                target_precision=target
+                target_precision=target,
             )
 
     # Target == current, reset dwell
@@ -216,5 +217,5 @@ def assign_precision_hysteresis(
         current_precision=current,
         dwell_counter=0,
         last_change_tick=state.last_change_tick,
-        target_precision=current
+        target_precision=current,
     )

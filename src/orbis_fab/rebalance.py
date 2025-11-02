@@ -106,9 +106,7 @@ class MMRRebalancer:
         return distance
 
     def compute_coverage_penalty(
-        self,
-        candidate_vector: List[float],
-        existing_nodes: List[Tuple[List[float], float]]
+        self, candidate_vector: List[float], existing_nodes: List[Tuple[List[float], float]]
     ) -> float:
         """
         Compute coverage penalty for a candidate node.
@@ -130,7 +128,7 @@ class MMRRebalancer:
             return 0.0  # No existing nodes, no penalty
 
         # Find closest existing node
-        min_distance = float('inf')
+        min_distance = float("inf")
         for existing_vec, _ in existing_nodes:
             distance = self.cosine_distance(candidate_vector, existing_vec)
             min_distance = min(min_distance, distance)
@@ -145,7 +143,8 @@ class MMRRebalancer:
             penalty_ratio = 1.0 - (min_distance / self.config.distance_threshold)
             penalty = min(
                 self.config.max_penalty,
-                self.config.min_distance_boost + (self.config.max_penalty - self.config.min_distance_boost) * penalty_ratio
+                self.config.min_distance_boost
+                + (self.config.max_penalty - self.config.min_distance_boost) * penalty_ratio,
             )
             return penalty
 
@@ -155,7 +154,7 @@ class MMRRebalancer:
         self,
         candidate_score: float,
         candidate_vector: List[float],
-        existing_nodes: List[Tuple[List[float], float]]
+        existing_nodes: List[Tuple[List[float], float]],
     ) -> float:
         """
         Rebalance candidate score using MMR formula.
@@ -197,7 +196,7 @@ class MMRRebalancer:
         self,
         candidates: List[Tuple[List[float], float]],
         existing_nodes: List[Tuple[List[float], float]],
-        top_k: int
+        top_k: int,
     ) -> List[Tuple[List[float], float, float]]:
         """
         Rebalance a batch of candidates and select top-k.

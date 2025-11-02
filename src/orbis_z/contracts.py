@@ -26,6 +26,7 @@ class ZNode(TypedDict):
         vec: Embedding vector for MMR diversity (list[float])
         metadata: Additional node attributes (dict)
     """
+
     id: str
     score: float
     vec: NotRequired[list[float]]  # Optional: for vec-based MMR (Phase 2)
@@ -44,6 +45,7 @@ class ZEdge(TypedDict):
     Optional:
         rel_type: Relationship type (e.g., "similar", "causal")
     """
+
     src: str
     dst: str
     weight: float
@@ -60,6 +62,7 @@ class ZQuotas(TypedDict):
         edges: Maximum edges to include
         time_ms: Maximum processing time (milliseconds)
     """
+
     tokens: int
     nodes: int
     edges: int
@@ -93,6 +96,7 @@ class ZSliceLite(TypedDict):
         ...     "zv": "v0.1.0"
         ... }
     """
+
     nodes: list[ZNode]
     edges: list[ZEdge]
     quotas: ZQuotas

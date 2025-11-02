@@ -47,6 +47,7 @@ from typing import Any, cast
 # Ensure ZSpaceShim is always defined for type-checkers; guard calls with HAS_ZSPACE at runtime.
 try:
     from orbis_z import ZSpaceShim as _ZSpaceShim
+
     ZSpaceShim = _ZSpaceShim  # alias for static access
     HAS_ZSPACE = True
 except Exception:  # ImportError or any initialization error
@@ -108,7 +109,12 @@ class FABCore:
         # PR#5.7: Reward Shaping (soft gradient over META)
         reward_enabled: bool = True,
         reward_alpha: float = 0.2,
-        reward_weights: tuple[float, float, float, float] = (+1.0, -1.0, -1.0, -1.0),  # (diversity, latency, cb, error)
+        reward_weights: tuple[float, float, float, float] = (
+            +1.0,
+            -1.0,
+            -1.0,
+            -1.0,
+        ),  # (diversity, latency, cb, error)
         reward_window: int = 50,
         reward_pressure_ai: float = 0.1,
         reward_pressure_target: float = 0.1,
@@ -116,7 +122,7 @@ class FABCore:
         selfloop_enabled: bool = True,
         self_presence_alpha: float = 0.2,
         self_presence_high: float = 0.8,
-        self_presence_low: float = 0.3
+        self_presence_low: float = 0.3,
     ):
         """Initialize FAB with configurable envelope behavior and node selection
 
@@ -186,6 +192,7 @@ class FABCore:
         self.z_gain_ema: float = 0.0  # Exponential moving average of z_diversity_gain
         self.z_window_size: int = 100  # Sliding window size for percentiles
         from collections import deque
+
         self.z_latency_window: deque = deque(maxlen=self.z_window_size)  # Last N latencies
         self.z_gain_window: deque = deque(maxlen=self.z_window_size)  # Last N gains
 
@@ -207,7 +214,9 @@ class FABCore:
         self.z_ai_step_ms: float = float(z_ai_step_ms)
         self.z_md_factor: float = float(z_md_factor)
         # Текущее адаптивное значение (зажимаем между min/max и hard cap)
-        self.z_limit_current_ms: float = max(self.z_limit_min_ms, min(self.z_time_limit_ms, self.z_limit_max_ms))
+        self.z_limit_current_ms: float = max(
+            self.z_limit_min_ms, min(self.z_time_limit_ms, self.z_limit_max_ms)
+        )
         self.z_limit_history = deque(maxlen=50)
         self.z_limit_last_adjust: str = ""
 
@@ -215,7 +224,10 @@ class FABCore:
         self.z_meta_enabled: bool = bool(z_meta_enabled)
         self.z_meta_min_window: int = int(z_meta_min_window)
         self.z_meta_vol_threshold: float = float(z_meta_vol_threshold)
-        self.z_meta_target_bounds: tuple[float, float] = (float(z_meta_target_bounds[0]), float(z_meta_target_bounds[1]))
+        self.z_meta_target_bounds: tuple[float, float] = (
+            float(z_meta_target_bounds[0]),
+            float(z_meta_target_bounds[1]),
+        )
         self.z_meta_adjust_step_ms: float = float(z_meta_adjust_step_ms)
         self.z_meta_last_decision: str = ""  # 'tighten'/'loosen'/'hold'/'none'
         self.z_meta_volatility: float = 0.0  # Normalized std of limit history
@@ -246,8 +258,10 @@ class FABCore:
         self.reward_enabled: bool = bool(reward_enabled)
         self.reward_alpha: float = float(reward_alpha)
         self.reward_weights: tuple[float, float, float, float] = (
-            float(reward_weights[0]), float(reward_weights[1]),
-            float(reward_weights[2]), float(reward_weights[3])
+            float(reward_weights[0]),
+            float(reward_weights[1]),
+            float(reward_weights[2]),
+            float(reward_weights[3]),
         )
         self.reward_window: int = int(reward_window)
         self.reward_pressure_ai: float = float(reward_pressure_ai)
@@ -265,7 +279,9 @@ class FABCore:
 
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
-        self.session_seed = hash_to_seed(self.session_id)  # Cache to avoid rehashing on every fill()
+        self.session_seed = hash_to_seed(
+            self.session_id
+        )  # Cache to avoid rehashing on every fill()
 
         # Phase B components
         self.current_tick = 0
@@ -275,16 +291,14 @@ class FABCore:
         if self.envelope_mode == "legacy":
             # Phase A compatibility: immediate assignment (dwell=0, rate_limit=1)
             self.hys_cfg = HysteresisConfig(
-                dwell_time=0,
-                rate_limit_ticks=1,
-                min_stream_for_upgrade=min_stream_for_upgrade
+                dwell_time=0, rate_limit_ticks=1, min_stream_for_upgrade=min_stream_for_upgrade
             )
         else:
             # Production hysteresis: dead band + dwell + rate limit + tiny stream guard
             self.hys_cfg = HysteresisConfig(
                 dwell_time=hysteresis_dwell,
                 rate_limit_ticks=hysteresis_rate_limit,
-                min_stream_for_upgrade=min_stream_for_upgrade
+                min_stream_for_upgrade=min_stream_for_upgrade,
             )
 
         self.hys_state_stream = HysteresisState()
@@ -438,12 +452,10 @@ class FABCore:
         # Deterministic sort by score (B.4)
         # Convert to (node, score) tuples for deterministic_sort
         from .seeding import deterministic_sort
+
         items_with_scores = [(n, n.get("score", 0.0)) for n in nodes]
         sorted_tuples = deterministic_sort(
-            items=items_with_scores,
-            rng=self.rng,
-            key_index=1,
-            reverse=True
+            items=items_with_scores, rng=self.rng, key_index=1, reverse=True
         )
         nodes_sorted = [item for item, score in sorted_tuples]
 
@@ -452,7 +464,7 @@ class FABCore:
         stream_cap = self.st.stream_win.cap_nodes
         global_cap = self.st.global_win.cap_nodes
 
-        candidates_for_stream = nodes_sorted[:min(len(nodes_sorted), stream_cap * 2)]
+        candidates_for_stream = nodes_sorted[: min(len(nodes_sorted), stream_cap * 2)]
 
         # Rebalance stream candidates using MMR
         if len(candidates_for_stream) > stream_cap:
@@ -464,9 +476,7 @@ class FABCore:
 
             # Run MMR rebalancing (returns top-k by rebalanced score)
             rebalanced_results = self.mmr_rebalancer.rebalance_batch(
-                candidates=candidates_mmr,
-                existing_nodes=[],
-                top_k=stream_cap
+                candidates=candidates_mmr, existing_nodes=[], top_k=stream_cap
             )
 
             # Track real MMR penalty stats
@@ -521,7 +531,7 @@ class FABCore:
                             score=avg_score,
                             state=self.hys_state_stream,
                             config=self.hys_cfg,
-                            current_tick=self.current_tick
+                            current_tick=self.current_tick,
                         )
                 else:
                     # Normal hysteresis path (sufficient samples)
@@ -529,7 +539,7 @@ class FABCore:
                         score=avg_score,
                         state=self.hys_state_stream,
                         config=self.hys_cfg,
-                        current_tick=self.current_tick
+                        current_tick=self.current_tick,
                     )
 
             self.st.stream_win.precision = new_precision
@@ -540,12 +550,15 @@ class FABCore:
         # Global window keeps default cold precision (mxfp4.12)
         self.st.global_win.precision = "mxfp4.12"
 
-    def _simulate_fab_stream_diversity(self, z: ZSliceLite, *, combined_seed: int, stream_cap: int) -> float:
+    def _simulate_fab_stream_diversity(
+        self, z: ZSliceLite, *, combined_seed: int, stream_cap: int
+    ) -> float:
         """
         PR#3 helper: локальная симуляция FAB-селектора для оценки baseline diversity
         (дисперсия скорингов в отобранном stream), без мутаций self.st/diagnostics.
         """
         from .seeding import deterministic_sort
+
         local_rng = SeededRNG(seed=combined_seed)
 
         nodes = list(z.get("nodes", []))
@@ -555,23 +568,21 @@ class FABCore:
         # Тот же детерминированный sort, что и в FAB-пути
         items_with_scores = [(n, n.get("score", 0.0)) for n in nodes]
         sorted_tuples = deterministic_sort(
-            items=items_with_scores,
-            rng=local_rng,
-            key_index=1,
-            reverse=True
+            items=items_with_scores, rng=local_rng, key_index=1, reverse=True
         )
         nodes_sorted = [item for item, score in sorted_tuples]
 
-        candidates_for_stream = nodes_sorted[:min(len(nodes_sorted), stream_cap * 2)]
+        candidates_for_stream = nodes_sorted[: min(len(nodes_sorted), stream_cap * 2)]
 
         # Та же MMR-логика (1D-вектора по score), что и в FAB
         if len(candidates_for_stream) > stream_cap:
-            candidates_mmr = [([float(node.get("score", 0.0))], node.get("score", 0.0)) for node in candidates_for_stream]
+            candidates_mmr = [
+                ([float(node.get("score", 0.0))], node.get("score", 0.0))
+                for node in candidates_for_stream
+            ]
             local_rebalancer = MMRRebalancer(self.mmr_cfg)
             rebalanced_results = local_rebalancer.rebalance_batch(
-                candidates=candidates_mmr,
-                existing_nodes=[],
-                top_k=stream_cap
+                candidates=candidates_mmr, existing_nodes=[], top_k=stream_cap
             )
             rebalanced_stream = []
             selected_scores = {result[1] for result in rebalanced_results}
@@ -617,7 +628,11 @@ class FABCore:
         # PR#5.4: Combine adaptive limit, hard cap, and external quota
         z_quotas = z.get("quotas", {}) or {}
         quota_ms = float(z_quotas.get("time_ms", float("inf")) or float("inf"))
-        base_limit = self.z_limit_current_ms if getattr(self, "z_adapt_enabled", False) else self.z_time_limit_ms
+        base_limit = (
+            self.z_limit_current_ms
+            if getattr(self, "z_adapt_enabled", False)
+            else self.z_time_limit_ms
+        )
         hard_cap = self.z_time_limit_ms if self.z_time_limit_ms > 0.0 else float("inf")
         effective_limit_ms = min(base_limit, hard_cap, quota_ms)
 
@@ -649,7 +664,9 @@ class FABCore:
             # Early timeout check before heavy work
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             if elapsed_ms > effective_limit_ms:
-                raise TimeoutError(f"z-space selection time budget exceeded pre-select ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
+                raise TimeoutError(
+                    f"z-space selection time budget exceeded pre-select ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)"
+                )
 
             nodes = list(z.get("nodes", []))
             if not nodes:
@@ -681,7 +698,9 @@ class FABCore:
             # Timeout check after stream selection
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             if elapsed_ms > effective_limit_ms:
-                raise TimeoutError(f"z-space selection time budget exceeded after stream ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
+                raise TimeoutError(
+                    f"z-space selection time budget exceeded after stream ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)"
+                )
 
             # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
             global_ids = ZSpaceShim.select_topk_for_global(
@@ -712,14 +731,14 @@ class FABCore:
                                 score=avg_score,
                                 state=self.hys_state_stream,
                                 config=self.hys_cfg,
-                                current_tick=self.current_tick
+                                current_tick=self.current_tick,
                             )
                     else:
                         new_precision, self.hys_state_stream = assign_precision_hysteresis(
                             score=avg_score,
                             state=self.hys_state_stream,
                             config=self.hys_cfg,
-                            current_tick=self.current_tick
+                            current_tick=self.current_tick,
                         )
                 self.st.stream_win.precision = new_precision
                 if old_precision != new_precision:
@@ -756,12 +775,16 @@ class FABCore:
 
             # PR#5.4: Adaptive decrease on failure
             try:
-                self._z_adapt(reason if reason in ("timeout", "exception", "unavailable") else "cb_open", None)
+                self._z_adapt(
+                    reason if reason in ("timeout", "exception", "unavailable") else "cb_open", None
+                )
             except Exception:
                 pass
 
             try:
-                self.z_last_latency_ms = (time.perf_counter() - locals().get("t_start", time.perf_counter())) * 1000.0
+                self.z_last_latency_ms = (
+                    time.perf_counter() - locals().get("t_start", time.perf_counter())
+                ) * 1000.0
             except Exception:
                 self.z_last_latency_ms = 0.0
             self.z_last_diversity_gain = 0.0
@@ -854,12 +877,12 @@ class FABCore:
             return
 
         # Calculate volatility (coefficient of variation)
-        window = list(self.z_limit_history)[-self.z_meta_min_window:]
+        window = list(self.z_limit_history)[-self.z_meta_min_window :]
         try:
             mean_limit = sum(window) / len(window)
             if mean_limit > 0.0:
                 variance = sum((x - mean_limit) ** 2 for x in window) / len(window)
-                std_limit = variance ** 0.5
+                std_limit = variance**0.5
                 self.z_meta_volatility = std_limit / mean_limit  # Normalized
             else:
                 self.z_meta_volatility = 0.0
@@ -930,7 +953,11 @@ class FABCore:
 
         vol = float(getattr(self, "z_meta_volatility", 0.0) or 0.0)
         cb_open = bool(getattr(self, "z_cb_remaining", 0) > 0)
-        err_rate = float(self.st.metrics.get("error_rate", 0.0) if getattr(self, "st", None) and getattr(self, "st").metrics is not None else 0.0)
+        err_rate = float(
+            self.st.metrics.get("error_rate", 0.0)
+            if getattr(self, "st", None) and getattr(self, "st").metrics is not None
+            else 0.0
+        )
 
         # PR#6.0: SELF-Token Loop influence on policy decision
         self_presence_ema = getattr(self, "self_presence_ema", 0.0)
@@ -946,9 +973,18 @@ class FABCore:
             target_mode = "conservative"
         # Aggressive if volatility low, no CB, and low error rate
         # PR#6.0: Also aggressive if self_presence_ema very high (self-intensification)
-        elif vol <= self.policy_aggr_vol_max and not cb_open and err_rate < self.policy_error_cons_min * 0.5:
+        elif (
+            vol <= self.policy_aggr_vol_max
+            and not cb_open
+            and err_rate < self.policy_error_cons_min * 0.5
+        ):
             target_mode = "aggressive"
-        elif selfloop_enabled and self_presence_ema >= self.self_presence_high and not cb_open and err_rate < self.policy_error_cons_min:
+        elif (
+            selfloop_enabled
+            and self_presence_ema >= self.self_presence_high
+            and not cb_open
+            and err_rate < self.policy_error_cons_min
+        ):
             target_mode = "aggressive"
 
         if target_mode != self.policy_mode:
@@ -1025,7 +1061,11 @@ class FABCore:
         div = float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
         lat = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
         cb = 1.0 if getattr(self, "z_cb_remaining", 0) > 0 else 0.0
-        err = float(self.st.metrics.get("error_rate", 0.0) if getattr(self, "st", None) and getattr(self, "st").metrics is not None else 0.0)
+        err = float(
+            self.st.metrics.get("error_rate", 0.0)
+            if getattr(self, "st", None) and getattr(self, "st").metrics is not None
+            else 0.0
+        )
 
         # Weighted reward (can be positive or negative)
         r = w_div * div + w_lat * lat + w_cb * cb + w_err * err
@@ -1100,7 +1140,9 @@ class FABCore:
                 self.z_gain_ema = gain
             else:
                 # EMA update: new_ema = alpha * new_value + (1 - alpha) * old_ema
-                self.z_latency_ema = self.z_ema_alpha * latency + (1 - self.z_ema_alpha) * self.z_latency_ema
+                self.z_latency_ema = (
+                    self.z_ema_alpha * latency + (1 - self.z_ema_alpha) * self.z_latency_ema
+                )
                 self.z_gain_ema = self.z_ema_alpha * gain + (1 - self.z_ema_alpha) * self.z_gain_ema
 
             # Update sliding window (deque auto-evicts oldest when full)
@@ -1160,7 +1202,7 @@ class FABCore:
             global_precision=self.st.global_win.precision,
             stream_precision=self.st.stream_win.precision,
             stable_ticks=self.stable_tracker.state.stable_ticks,
-            cooldown_remaining=self.stable_tracker.state.cooldown_remaining
+            cooldown_remaining=self.stable_tracker.state.cooldown_remaining,
         )
 
         ctx = {
@@ -1220,12 +1262,21 @@ class FABCore:
                 "z-space": self.ab_arm_counts.get("z-space", 0),
             },
             "ab_latency_avg": {
-                "fab": self._ab_safe_avg(self.ab_latency_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)),
-                "z-space": self._ab_safe_avg(self.ab_latency_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)),
+                "fab": self._ab_safe_avg(
+                    self.ab_latency_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)
+                ),
+                "z-space": self._ab_safe_avg(
+                    self.ab_latency_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)
+                ),
             },
             "ab_diversity_gain_avg": {
-                "fab": self._ab_safe_avg(self.ab_diversity_gain_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)),
-                "z-space": self._ab_safe_avg(self.ab_diversity_gain_sum.get("z-space", 0.0), self.ab_arm_counts.get("z-space", 0)),
+                "fab": self._ab_safe_avg(
+                    self.ab_diversity_gain_sum.get("fab", 0.0), self.ab_arm_counts.get("fab", 0)
+                ),
+                "z-space": self._ab_safe_avg(
+                    self.ab_diversity_gain_sum.get("z-space", 0.0),
+                    self.ab_arm_counts.get("z-space", 0),
+                ),
             },
             "z_latency_ema": self.z_latency_ema,
             "z_gain_ema": self.z_gain_ema,
@@ -1263,9 +1314,13 @@ class FABCore:
             "reward_enabled": self.reward_enabled,
             "reward_last": self.reward_last,
             "reward_ema": self.reward_ema,
-            "reward_window_avg": sum(self.reward_history) / len(self.reward_history) if len(self.reward_history) > 0 else 0.0,
+            "reward_window_avg": (
+                sum(self.reward_history) / len(self.reward_history)
+                if len(self.reward_history) > 0
+                else 0.0
+            ),
             "selfloop_enabled": self.selfloop_enabled,
-            "self_presence_ema": self.self_presence_ema
+            "self_presence_ema": self.self_presence_ema,
         }
 
         ctx["diagnostics"] = diag_snapshot
@@ -1295,11 +1350,7 @@ class FABCore:
             -> {"mode": "FAB1", "stable": True}
         """
         # Update metrics
-        m: Metrics = {
-            "stress": stress,
-            "self_presence": self_presence,
-            "error_rate": error_rate
-        }
+        m: Metrics = {"stress": stress, "self_presence": self_presence, "error_rate": error_rate}
         self.st.metrics = m
 
         # PR#6.0: Update self_presence EMA for SELF-Token Loop
@@ -1351,7 +1402,7 @@ class FABCore:
         result = {
             "mode": self.st.mode,
             "stable": self.stable_tracker.is_stable(),
-            "stable_ticks": result_stable_ticks
+            "stable_ticks": result_stable_ticks,
         }
 
         # Reset stability counter AFTER preparing result (for FAB0→FAB1 only)

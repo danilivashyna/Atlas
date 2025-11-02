@@ -156,7 +156,10 @@ class TestFABDecide:
     def test_decide_shadow_mode(self, client: TestClient):
         """Test FAB decide returns mock decisions in Shadow mode."""
         payload = {
-            "metrics": {"h_coherence": {"sp": 0.85, "pd": 0.82}, "h_stability": {"avg_drift": 0.05}},
+            "metrics": {
+                "h_coherence": {"sp": 0.85, "pd": 0.82},
+                "h_stability": {"avg_drift": 0.05},
+            },
             "run_id": "test-decide-001",
         }
 

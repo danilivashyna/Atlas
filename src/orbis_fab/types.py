@@ -12,7 +12,6 @@ Invariants:
 - Metrics drive FAB0→FAB1→FAB2 transitions
 """
 
-from enum import Enum
 from typing import TypedDict, Literal, NotRequired
 
 

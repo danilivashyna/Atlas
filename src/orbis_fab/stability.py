@@ -111,8 +111,8 @@ class StabilityTracker:
 
             # Calculate exponential cool-down duration
             cooldown_ticks = min(
-                int(self.config.cooldown_base ** self.state.degradation_count),
-                self.config.cooldown_max_ticks
+                int(self.config.cooldown_base**self.state.degradation_count),
+                self.config.cooldown_max_ticks,
             )
 
             # Enter cool-down

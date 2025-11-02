@@ -24,6 +24,7 @@ from .contracts import ZSliceLite
 
 # ---- Vec utilities (Phase 2 / PR#4: Vec-MMR) ----
 
+
 def _vec_norm(vec: Sequence[float]) -> float:
     """Calculate L2 norm of vector."""
     return sqrt(sum(v * v for v in vec)) if vec else 0.0
@@ -50,10 +51,7 @@ def _cosine_sim(a: Sequence[float], b: Sequence[float], na: float, nb: float) ->
 
 
 def _mmr_greedy(
-    candidates: List[Dict[str, Any]],
-    k: int,
-    lambda_diversity: float,
-    rng
+    candidates: List[Dict[str, Any]], k: int, lambda_diversity: float, rng
 ) -> List[str]:
     """
     Greedy MMR with cosine diversity and deterministic tie-breaks.
@@ -77,7 +75,11 @@ def _mmr_greedy(
         return []
 
     # Check for vec presence
-    with_vec = [n for n in candidates if isinstance(n.get("vec"), (list, tuple)) and n.get("vec") and len(n.get("vec")) > 0]
+    with_vec = [
+        n
+        for n in candidates
+        if isinstance(n.get("vec"), (list, tuple)) and n.get("vec") and len(n.get("vec")) > 0
+    ]
 
     # Fallback: no vectors → pure score-sort
     if len(with_vec) == 0:
@@ -162,10 +164,18 @@ def _mmr_greedy(
 
     # Fill remaining slots with non-vec nodes (score-sorted)
     if len(selected_ids) < k:
-        without_vec = [n for n in candidates if not (isinstance(n.get("vec"), (list, tuple)) and len(n.get("vec")) > 0)]
+        without_vec = [
+            n
+            for n in candidates
+            if not (isinstance(n.get("vec"), (list, tuple)) and len(n.get("vec")) > 0)
+        ]
         rest_sorted = sorted(
-            [(n.get("id"), float(n.get("score", 0.0))) for n in without_vec if n.get("id") not in selected_ids],
-            key=lambda p: (-p[1], p[0])
+            [
+                (n.get("id"), float(n.get("score", 0.0)))
+                for n in without_vec
+                if n.get("id") not in selected_ids
+            ],
+            key=lambda p: (-p[1], p[0]),
         )
         for nid, _ in rest_sorted:
             selected_ids.append(nid)
@@ -187,9 +197,7 @@ class ZSpaceShim:
 
     @staticmethod
     def select_topk_for_stream(
-        z: ZSliceLite,
-        k: int,
-        rng: Optional[random.Random] = None
+        z: ZSliceLite, k: int, rng: Optional[random.Random] = None
     ) -> list[str]:
         """
         Select top-k node IDs for stream from Z-Space slice.
@@ -256,16 +264,13 @@ class ZSpaceShim:
         # Fallback: Score-sort with deterministic tie-breaks
         ordered = sorted(
             [(n.get("id"), float(n.get("score", 0.0))) for n in pool],
-            key=lambda p: (-p[1], p[0])  # score desc, id asc
+            key=lambda p: (-p[1], p[0]),  # score desc, id asc
         )
         return [i for i, _ in ordered[:k]]
 
     @staticmethod
     def select_topk_for_global(
-        z: ZSliceLite,
-        k: int,
-        exclude_ids: set[str],
-        rng: Optional[random.Random] = None
+        z: ZSliceLite, k: int, exclude_ids: set[str], rng: Optional[random.Random] = None
     ) -> list[str]:
         """
         Select top-k node IDs for global pool (excluding stream nodes).
@@ -317,7 +322,7 @@ class ZSpaceShim:
         # Deterministic tie-breaks by id
         ordered = sorted(
             [(n.get("id"), float(n.get("score", 0.0))) for n in pool],
-            key=lambda p: (-p[1], p[0])  # score desc, id asc
+            key=lambda p: (-p[1], p[0]),  # score desc, id asc
         )
 
         return [i for i, _ in ordered[:k]]
