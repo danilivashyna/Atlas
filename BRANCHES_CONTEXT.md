@@ -1,7 +1,8 @@
 # Atlas Multi-Branch Development Context
 
-**Date**: 2025-10-29  
-**Strategy**: Параллельная разработка с эмерджентными зависимостями  
+**Date**: 2025-11-02  
+**Strategy**: Phase B → SELF Pipeline  
+**Current Phase**: Phase B (Stabilization)
 
 ---
 
@@ -10,44 +11,308 @@
 ```
 main (Atlas v0.2.0 E4 GA)
   ↓
-  ├─► fab (Fractal Associative Bus) ← ТЕКУЩАЯ
-  │    ├─► z-space (эмерджентное от FAB)
-  │    │    └─► self (эмерджентное от Z-space)
-  │    │
-  │    └─► [другие ветки FAB]
-  │
-  └─► [другие ветки Atlas]
+jbarton43/z-space (Atlas + FAB + Z-Space ✅ CLEAN)
+  ↓
+  ├─► phaseB/hysteresis       (B1: Bit-Envelope Hysteresis)
+  ├─► phaseB/stability        (B2: Window Stability Counter)
+  ├─► phaseB/shim-telemetry   (B3: Z-Space Telemetry)
+  └─► [Phase C: SELF] (upcoming)
 ```
 
 ---
 
-## 📋 Branches Roadmap
+## 📊 Текущее состояние (Baseline)
 
-### 1. **Atlas** (main) — ⏸️ НА ПАУЗЕ
-**Status**: v0.2.0 GA (E4 Homeostasis Complete)  
-**Last commit**: `7ffd495` (FAB_PHASE1_COMPLETE.md)  
-**Components**:
-- ✅ E1 API (FastAPI, health, validation)
-- ✅ E2 Index Builders (HNSW, FAISS, MANIFEST)
-- ✅ E3 Metrics (h_coherence, h_stability, Prometheus)
-- ✅ E4 Homeostasis (OODA loop: E4.1-E4.8)
-- ✅ FAB Integration v0.1 (Shadow Mode: 4 routes, 11 tests)
+### jbarton43/z-space ✅ CLEAN
 
-**Next** (когда вернёмся):
-- FAB Phase 2 (Mirroring): FAB cache + E2 write-through
-- FAB Phase 3 (Cutover): E4 actions + SLO monitors
-- v0.3 Memory Persistence (PostgreSQL + Redis)
+**Статус**: 207 тестов passed, Pylint 9.44/10, 0 warnings  
+**Завершено**:
+- ✅ Atlas core (encoder/decoder/hierarchical/space/dimensions)
+- ✅ FAB integration (shadow mode, reticulum, hysteresis)
+- ✅ Z-Space (circuit breaker, policy gating, router)
+- ✅ Memory persistence + query cache
+- ✅ API endpoints (FAB routes, homeostasis, memory, router)
+- ✅ Cleanup: 91+ Pylint warnings устранены
+- ✅ 4 коммита с исправлениями
 
-**Контекст сохранён в**:
-- `FAB_v0.1_STATUS.md` (315 lines)
-- `FAB_PHASE1_COMPLETE.md` (completion report)
-- `docs/AURIS_FAB_Integration_Plan_v0.1.txt`
+**Метрики качества**:
+```yaml
+tests_passed: 207/211 (98%)
+  - API modules: 40 passed
+  - Core modules: 50 passed
+  - FAB integration: 32 passed
+  - Z-Space: 10 passed
+  - Memory: 8 passed
+  - Integration: 51 passed
+  - Golden samples: 16 passed
+
+code_quality:
+  pylint_score: 9.44/10
+  warnings: 0 (в исправленных файлах)
+  coverage: ~85%
+```
+
+**Известные проблемы** (не блокируют Phase B):
+- 1 failing тест в `test_z_space_circuit_breaker.py::test_cb_reason_counts_accumulate`
+- 3 failing теста в `test_summarize.py` (500 Internal Server Error)
 
 ---
 
-### 2. **fab** — 🔥 ТЕКУЩАЯ ВЕТКА
-**Status**: Phase A (MVP) — ✅ COMPLETE  
-**Base**: `main` (Atlas v0.2.0)  
+## 📋 Phase B: Ветки и планирование
+
+## 📋 Phase B: Ветки и планирование
+
+### 1. **phaseB/hysteresis** — B1 (D1-D2)
+**Status**: 🆕 Created, Ready to Start  
+**Base**: `jbarton43/z-space`  
+**Owner**: TBD  
+**Deadline**: 2 дня
+
+**Цель**: Анти-дребезг для bit-envelope с ограничением ≤1 переключение/сек/слой
+
+**Компоненты**:
+- `src/orbis_fab/hysteresis.py` - `BitEnvelopeHysteresis` класс
+- `tests/test_bit_envelope_hysteresis.py` - property-based тесты
+- Метрики: `switch_rate`, `oscillation_rate`, `stability_latency`
+
+**SLO**:
+- `oscillation_rate_p95 < 0.1` (10% окон)
+- `stability_latency_p50 < 2s`
+- `switch_rate_max ≤ 1.0/sec`
+
+**Документация**:
+- Design: `docs/design/hysteresis.md` (TBD)
+- PR Template: `docs/pr_templates/PR_B1_HYSTERESIS.md` ✅
+- Runbook: `docs/runbooks/hysteresis_oscillation.md` (TBD)
+
+---
+
+### 2. **phaseB/stability** — B2 (D3)
+**Status**: 🆕 Created, Ready to Start  
+**Base**: `jbarton43/z-space`  
+**Owner**: TBD  
+**Deadline**: 1 день
+
+**Цель**: Window Stability Counter с EMA и триггерами деградации
+
+**Компоненты**:
+- `src/orbis_fab/stability.py` - `WindowStabilityCounter` класс
+- `tests/test_window_stability.py` - unit + integration
+- Интеграция с `FABCore.decide()` для mode switching
+
+**SLO**:
+- `stability_score_p50 > 0.8` (80% окон стабильны)
+- `stability_score_p95 > 0.6` (worst-case >60%)
+- `degradation_events < 10/hour`
+
+**Зависимости**:
+- Использует `oscillation_rate` из B1
+
+---
+
+### 3. **phaseB/shim-telemetry** — B3 (D4)
+**Status**: 🆕 Created, Ready to Start  
+**Base**: `jbarton43/z-space`  
+**Owner**: TBD  
+**Deadline**: 1 день
+
+**Цель**: Телеметрия Z-Space shim + фича-флаг для write-through
+
+**Компоненты**:
+- Дополнить `src/orbis_fab/zspace_shim.py` телеметрией
+- `tests/test_zspace_telemetry.py` - тесты фича-флага и квот
+- Метрики: `latency_ms`, `coverage`, `novelty`
+
+**SLO**:
+- `zspace_latency_p95 < 50ms`
+- `zspace_coverage_p50 > 0.8` (80% покрытие)
+- `budget_violations < 5%`
+
+**Feature Flag**:
+```python
+ATLAS_ZSPACE_WRITE_THROUGH=off  # по умолчанию
+```
+
+---
+
+## 📅 7-дневный план (краткий)
+
+| День | Задача | Ветка | Deliverables |
+|------|--------|-------|--------------|
+| **D1-D2** | B1: Hysteresis | `phaseB/hysteresis` | Класс + тесты + метрики + PR |
+| **D3** | B2: Stability | `phaseB/stability` | EMA counter + триггеры + PR |
+| **D4** | B3: Telemetry | `phaseB/shim-telemetry` | Метрики + фича-флаг + PR |
+| **D5** | Load Testing | все ветки | Нагрузочные прогоны + baseline |
+| **D6-D7** | Stabilization | все ветки | Багфиксы + docs + SELF skeleton |
+
+---
+
+## 🎯 Definition of Done (Phase B)
+
+✅ **Технически**:
+- [ ] Все 4 компонента (B1-B4) merged
+- [ ] 207+ тестов passed
+- [ ] Pylint ≥9.4/10
+- [ ] SLO compliance >90%
+
+✅ **Документация**:
+- [ ] Design docs завершены
+- [ ] Runbooks для алертов
+- [ ] MODEL_CARD.md обновлен
+- [ ] API docs актуальны
+
+✅ **Готовность к SELF**:
+- [ ] `SelfManager` skeleton
+- [ ] `SelfToken` dataclass
+- [ ] Transfer protocol spec
+
+---
+
+## 🚀 SELF Preview (Phase C)
+
+**Компоненты**:
+```python
+class SelfManager:
+    def mint(window_id: str) -> SelfToken
+    def update(token: SelfToken, event: Event) -> SelfToken
+    def transfer(from_window: str, to_window: str) -> bool
+    def replicate(token: SelfToken, target: str) -> SelfToken
+
+@dataclass
+class SelfToken:
+    window_id: str
+    presence: float    # 0-1
+    coherence: float   # 0-1
+    continuity: float  # 0-1
+    stress: float      # 0-1
+    created_at: datetime
+    version: int
+```
+
+**Гейтирование по FAB mode**:
+- FAB0: read-only SELF
+- FAB1: read + update
+- FAB2: full access (transfer + replicate)
+
+**Трассировка**: `identity.jsonl` logging
+
+---
+
+## 📚 Документация Phase B
+
+### Созданные файлы
+
+1. **`docs/PHASE_B_ROADMAP.md`** ✅
+   - Полная дорожная карта 7 дней
+   - Описание всех компонентов B1-B4
+   - Риски и смягчения
+   - PR чек-листы
+
+2. **`docs/slo/PHASE_B_SLO_SLI.md`** ✅
+   - Детальные SLO/SLI для каждого компонента
+   - Формулы расчета метрик
+   - Алерты и эскалация
+   - Grafana dashboards spec
+
+3. **`docs/pr_templates/PR_B1_HYSTERESIS.md`** ✅
+   - Шаблон PR для B1
+   - Чек-лист перед мерджем
+   - Инструкции по тестированию
+   - Acceptance criteria
+
+4. **`docs/PHASE_B_QUICK_START.md`** ✅
+   - Краткий гид по началу работы
+   - Quick commands
+   - SLO targets справка
+   - Definition of Done
+
+### Файлы для создания
+
+- `docs/design/hysteresis.md` - design doc для B1
+- `docs/design/stability.md` - design doc для B2
+- `docs/design/zspace_telemetry.md` - design doc для B3
+- `docs/runbooks/hysteresis_oscillation.md` - runbook
+- `docs/runbooks/stability_degradation.md` - runbook
+- `docs/runbooks/zspace_timeout.md` - runbook
+
+---
+
+## 🔗 Полезные ссылки
+
+**Документация**:
+- [Phase B Roadmap](docs/PHASE_B_ROADMAP.md)
+- [SLO/SLI Metrics](docs/slo/PHASE_B_SLO_SLI.md)
+- [Quick Start Guide](docs/PHASE_B_QUICK_START.md)
+- [PR Template B1](docs/pr_templates/PR_B1_HYSTERESIS.md)
+
+**Ветки**:
+```bash
+jbarton43/z-space       # базовая (clean)
+phaseB/hysteresis       # B1
+phaseB/stability        # B2
+phaseB/shim-telemetry   # B3
+```
+
+**Команды**:
+```bash
+# Переключиться на Phase B ветку
+git checkout phaseB/hysteresis
+
+# Запустить все тесты
+pytest -v
+
+# Проверить Pylint
+pylint src/orbis_fab/ --fail-under=9.0
+
+# Запустить с coverage
+pytest --cov=src --cov-report=html
+```
+
+---
+
+## ⚠️ Риски Phase B
+
+### Риск 1: Перегрев селектора
+**Смягчение**: жесткий time_ms лимит, деградация precision, профилирование
+
+### Риск 2: Осцилляции на границах backpressure
+**Смягчение**: гистерезис с dead band ±10%, EMA сглаживание, cooldown 5s
+
+### Риск 3: Несоответствие контрактов ZSliceLite
+**Смягчение**: единый контракт, Pydantic валидация, compatibility тесты
+
+---
+
+## � Метрики успеха Phase B
+
+```yaml
+baseline_current:  # jbarton43/z-space
+  tests_passed: 207
+  pylint_score: 9.44
+  warnings: 0
+
+targets_phase_b:  # после завершения
+  tests_passed: 220+  # +13 новых тестов
+  pylint_score: ≥9.4
+  slo_compliance: >90%
+  
+  hysteresis:
+    oscillation_rate_p95: <0.1
+    stability_latency_p50: <2s
+  
+  stability:
+    stability_score_p50: >0.8
+    degradation_events: <10/hour
+  
+  zspace:
+    latency_p95: <50ms
+    coverage_p50: >0.8
+```
+
+---
+
+**Последнее обновление**: 2025-11-02  
+**Следующий milestone**: Phase B Day 1 (B1 Hysteresis start)  
 **Last commit**: `65f2f92` (FAB_PHASE_A_STATUS.md)  
 **Scope**: FAB Core — оперативная шина осознания
 
