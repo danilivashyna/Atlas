@@ -19,9 +19,9 @@ from atlas.api.fab_routes import create_fab_router
 @pytest.fixture
 def app() -> FastAPI:  # pylint: disable=redefined-outer-name
     """Create minimal FastAPI app with FAB router."""
-    app = FastAPI()
-    app.include_router(create_fab_router())
-    return app
+    fastapi_app = FastAPI()
+    fastapi_app.include_router(create_fab_router())
+    return fastapi_app
 
 
 @pytest.fixture
@@ -125,6 +125,8 @@ class TestFABPush:
 class TestFABPull:
     """Tests for GET /api/v1/fab/context/pull."""
 
+    # pylint: disable=redefined-outer-name
+
     def test_pull_context_shadow_mode(self, client: TestClient):
         """Test FAB context pull returns empty in Shadow mode."""
         window_id = str(uuid4())
@@ -154,6 +156,8 @@ class TestFABPull:
 
 class TestFABDecide:
     """Tests for POST /api/v1/fab/decide."""
+
+    # pylint: disable=redefined-outer-name
 
     def test_decide_shadow_mode(self, client: TestClient):
         """Test FAB decide returns mock decisions in Shadow mode."""
@@ -193,6 +197,8 @@ class TestFABDecide:
 class TestFABAct:
     """Tests for POST /api/v1/fab/act/{action_type}."""
 
+    # pylint: disable=redefined-outer-name
+
     def test_act_shadow_mode(self, client: TestClient):
         """Test FAB act returns dry-run results in Shadow mode."""
         payload = {"params": {"shard_id": 0}, "run_id": "test-act-001", "dry_run": True}
@@ -222,6 +228,8 @@ class TestFABAct:
 
 class TestFABIntegration:
     """Integration tests for FAB routes."""
+
+    # pylint: disable=redefined-outer-name
 
     def test_all_routes_registered(self, client: TestClient):
         """Test that all 4 FAB routes are registered."""
