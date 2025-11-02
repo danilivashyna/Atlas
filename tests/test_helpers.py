@@ -75,8 +75,7 @@ def as_bounds_tuple(v: object, default: Tuple[float, float] = (0.0, 0.0)) -> Tup
 
 
 def as_weights4(
-    v: object, 
-    default: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    v: object, default: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 ) -> Tuple[float, float, float, float]:
     """Parse 4-tuple of floats from various formats."""
     if isinstance(v, (list, tuple)) and len(v) == 4:
@@ -90,23 +89,22 @@ def as_weights4(
 
 # TypedDict factory helpers for test data construction
 
-def make_budgets(
-    tokens: int = 8000,
-    nodes: int = 8,
-    edges: int = 0,
-    time_ms: int = 50
-) -> Budgets:
+
+def make_budgets(tokens: int = 8000, nodes: int = 8, edges: int = 0, time_ms: int = 50) -> Budgets:
     """Create type-safe Budgets TypedDict for testing.
-    
+
     IMPORTANT: Field is 'time_ms' (not 'time'). Legacy tests with 'time' field
     will cause reportArgumentType errors.
     """
-    return cast(Budgets, {
-        "tokens": tokens,
-        "nodes": nodes,
-        "edges": edges,
-        "time_ms": time_ms,
-    })
+    return cast(
+        Budgets,
+        {
+            "tokens": tokens,
+            "nodes": nodes,
+            "edges": edges,
+            "time_ms": time_ms,
+        },
+    )
 
 
 def make_z(
@@ -116,10 +114,10 @@ def make_z(
     tokens: int = 8000,
     nodes_quota: int = 128,
     edges_quota: int = 0,
-    time_ms: int = 30
+    time_ms: int = 30,
 ) -> ZSliceLite:
     """Create type-safe ZSliceLite TypedDict for testing.
-    
+
     Args:
         nodes: List of node dicts (default: 10 dummy nodes)
         edges: List of edge dicts (default: empty)
@@ -128,7 +126,7 @@ def make_z(
         nodes_quota: Node quota
         edges_quota: Edge quota
         time_ms: Time budget in ms
-        
+
     Note: Returns nodes/edges as lists (mutable sequences) which are
     compatible with Sequence[ZNode]/Sequence[ZEdge] type annotations.
     """
@@ -136,16 +134,19 @@ def make_z(
         nodes = [{"id": f"n{i}", "score": 1.0 - i * 0.01} for i in range(10)]
     if edges is None:
         edges = []
-    
-    return cast(ZSliceLite, {
-        "nodes": nodes,  # list is subtype of Sequence
-        "edges": edges,  # list is subtype of Sequence
-        "quotas": {
-            "tokens": tokens,
-            "nodes": nodes_quota,
-            "edges": edges_quota,
-            "time_ms": time_ms
+
+    return cast(
+        ZSliceLite,
+        {
+            "nodes": nodes,  # list is subtype of Sequence
+            "edges": edges,  # list is subtype of Sequence
+            "quotas": {
+                "tokens": tokens,
+                "nodes": nodes_quota,
+                "edges": edges_quota,
+                "time_ms": time_ms,
+            },
+            "seed": seed,
+            "zv": "v0.1.0",
         },
-        "seed": seed,
-        "zv": "v0.1.0",
-    })
+    )

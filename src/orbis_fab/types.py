@@ -22,25 +22,28 @@ FabMode = Literal["FAB0", "FAB1", "FAB2"]
 
 class Budgets(TypedDict):
     """Fixed capacity per tick (immutable during tick execution)"""
-    tokens: int      # Max tokens in context (default: 4096)
-    nodes: int       # Max nodes across windows (default: 256)
-    edges: int       # Max edges in Z-slice (default: 0 for Phase A)
-    time_ms: int     # Max tick duration (default: 30ms)
+
+    tokens: int  # Max tokens in context (default: 4096)
+    nodes: int  # Max nodes across windows (default: 256)
+    edges: int  # Max edges in Z-slice (default: 0 for Phase A)
+    time_ms: int  # Max tick duration (default: 30ms)
 
 
 class ZNode(TypedDict):
     """Minimal node representation from Z-space"""
-    id: str          # Node identifier
-    score: float     # Relevance score [0.0, 1.0]
+
+    id: str  # Node identifier
+    score: float  # Relevance score [0.0, 1.0]
     vec: NotRequired[list[float]]  # Optional: embedding for vec-based MMR (Phase 2)
 
 
 class ZEdge(TypedDict):
     """Minimal edge representation from Z-space"""
-    src: str         # Source node ID
-    dst: str         # Destination node ID
-    w: float         # Edge weight [0.0, 1.0]
-    kind: str        # Edge type (semantic/episodic/etc)
+
+    src: str  # Source node ID
+    dst: str  # Destination node ID
+    w: float  # Edge weight [0.0, 1.0]
+    kind: str  # Edge type (semantic/episodic/etc)
 
 
 class ZSliceLite(TypedDict):
@@ -49,15 +52,17 @@ class ZSliceLite(TypedDict):
     Used by FAB.fill() to populate global/stream windows.
     Phase A: nodes only, edges reserved for future.
     """
-    nodes: list[ZNode]     # Sorted by score descending
-    edges: list[ZEdge]     # Reserved (empty in Phase A)
-    quotas: Budgets        # Original request budgets
-    seed: str              # Selection seed/run_id
-    zv: str                # Z-Selector version
+
+    nodes: list[ZNode]  # Sorted by score descending
+    edges: list[ZEdge]  # Reserved (empty in Phase A)
+    quotas: Budgets  # Original request budgets
+    seed: str  # Selection seed/run_id
+    zv: str  # Z-Selector version
 
 
 class Metrics(TypedDict):
     """FAB health metrics for state transitions"""
-    stress: float            # Load stress [0.0, 1.0] (>0.7 triggers degradation)
-    self_presence: float     # SELF token presence [0.0, 1.0] (≥0.8 for FAB0→FAB1)
-    error_rate: float        # Error rate [0.0, 1.0] (>0.05 triggers degradation)
+
+    stress: float  # Load stress [0.0, 1.0] (>0.7 triggers degradation)
+    self_presence: float  # SELF token presence [0.0, 1.0] (≥0.8 for FAB0→FAB1)
+    error_rate: float  # Error rate [0.0, 1.0] (>0.05 triggers degradation)
