@@ -46,13 +46,13 @@ router = APIRouter(prefix="/api/v1", tags=["atlas-beta"])
 async def encode(request: EncodeRequest) -> EncodeResponse:
     """
     Encode text into 5D space.
-    
+
     Args:
         request: EncodeRequest with text, lang, normalize
-    
+
     Returns:
         EncodeResponse with embedding_5d, dimensions, meta
-    
+
     Raises:
         HTTPException: 500 if encoding fails
     """
@@ -73,13 +73,13 @@ async def encode(request: EncodeRequest) -> EncodeResponse:
 async def decode(request: DecodeRequest) -> DecodeResponse:
     """
     Decode 5D vector to text.
-    
+
     Args:
         request: DecodeRequest with embedding_5d, top_k
-    
+
     Returns:
         DecodeResponse with text, rationale, path
-    
+
     Raises:
         HTTPException: 500 if decoding fails
     """
@@ -99,13 +99,13 @@ async def decode(request: DecodeRequest) -> DecodeResponse:
 async def explain(request: ExplainRequest) -> ExplainResponse:
     """
     Explain 5D vector dimensions.
-    
+
     Args:
         request: ExplainRequest with embedding_5d
-    
+
     Returns:
         ExplainResponse with dimensions explanations, normalization, notes
-    
+
     Raises:
         HTTPException: 500 if explanation fails
     """
@@ -129,13 +129,13 @@ async def explain(request: ExplainRequest) -> ExplainResponse:
 async def encode_hierarchical(request: EncodeHierarchicalRequest) -> EncodeHierarchicalResponse:
     """
     Encode text hierarchically.
-    
+
     Args:
         request: EncodeHierarchicalRequest with text, levels, proj_dim, normalize
-    
+
     Returns:
         EncodeHierarchicalResponse with per-level embeddings and masks
-    
+
     Raises:
         HTTPException: 500 if hierarchical encoding fails
     """
@@ -159,16 +159,16 @@ async def encode_hierarchical(request: EncodeHierarchicalRequest) -> EncodeHiera
 async def search(request: SearchRequest) -> SearchResponse:
     """
     Multi-level semantic search with FAB routing.
-    
+
     Args:
         request: SearchRequest with query, levels, top_k, fuse
-    
+
     Returns:
         SearchResponse with ranked hits after fusion, optional debug info
-    
+
     Raises:
         HTTPException: 500 if search fails
-    
+
     Notes:
         - Routes through FAB layer (stateless, deterministic)
         - Fusion methods: RRF (k=60) or max_sim
@@ -194,7 +194,7 @@ async def search(request: SearchRequest) -> SearchResponse:
 async def health() -> HealthResponse:
     """
     Health check endpoint (liveness probe).
-    
+
     Returns:
         HealthResponse with status=healthy, version, timestamp
     """
@@ -214,26 +214,26 @@ async def health() -> HealthResponse:
 async def ready(request: Request) -> ReadyResponse:
     """
     Readiness check endpoint.
-    
+
     Args:
         request: FastAPI Request (access to app.state)
-    
+
     Returns:
         ReadyResponse with ready=true if all checks pass
-    
+
     Notes:
         - Checks: indices_loaded, manifest_valid, memory_available
         - Returns ready=false if any check fails (but still 200 OK)
     """
     # Check app state for indices
     indices_loaded = getattr(request.app.state, "indices_loaded", False)
-    
+
     # For now, assume manifest valid if indices loaded
     manifest_valid = indices_loaded
-    
+
     # Assume memory OK (no actual check yet)
     memory_available = True
-    
+
     return ReadyResponse(
         ready=(indices_loaded and manifest_valid and memory_available),
         checks=ReadyChecks(
@@ -253,73 +253,73 @@ async def ready(request: Request) -> ReadyResponse:
 async def metrics(request: Request) -> str:
     """
     Prometheus metrics export endpoint.
-    
+
     Args:
         request: FastAPI Request (access to app.state)
-    
+
     Returns:
         Plain text in Prometheus format
-    
+
     Metrics exported:
         - atlas_h_coherence{level_pair}: H-Coherence scores
         - atlas_h_stability{perturbation}: H-Stability drift scores
         - atlas_indices_loaded: Binary flag (0/1)
         - atlas_index_vectors{level}: Number of vectors per index
-    
+
     Notes:
         - Config-driven thresholds from h_metrics.yaml
         - Returns stub metrics if indices not loaded
     """
     lines = []
-    
+
     # Header
     lines.append("# HELP atlas_indices_loaded Whether indices are loaded (0=no, 1=yes)")
     lines.append("# TYPE atlas_indices_loaded gauge")
-    
+
     indices_loaded = getattr(request.app.state, "indices_loaded", False)
     lines.append(f"atlas_indices_loaded {1 if indices_loaded else 0}")
-    
+
     if not indices_loaded:
         # Return stub if indices not loaded
         lines.append("\n# Indices not loaded — metrics unavailable")
         return "\n".join(lines) + "\n"
-    
+
     # Get indices from app.state
     indices = getattr(request.app.state, "indices", {})
-    
+
     # Index vector counts
     lines.append("\n# HELP atlas_index_vectors Number of vectors in each index")
     lines.append("# TYPE atlas_index_vectors gauge")
-    
+
     for level, builder in indices.items():
         num_vectors = getattr(builder, "num_elements", 0)
         lines.append(f'atlas_index_vectors{{level="{level}"}} {num_vectors}')
-    
+
     # H-Coherence metrics (mock for now — need actual data)
     lines.append("\n# HELP atlas_h_coherence Hierarchical coherence between levels")
     lines.append("# TYPE atlas_h_coherence gauge")
     lines.append('atlas_h_coherence{level_pair="sent_to_para"} 0.0  # Requires test data')
     lines.append('atlas_h_coherence{level_pair="para_to_doc"} 0.0  # Requires test data')
-    
+
     # H-Stability metrics (mock for now — need actual data)
     lines.append("\n# HELP atlas_h_stability_drift Embedding drift under perturbations")
     lines.append("# TYPE atlas_h_stability_drift gauge")
     lines.append('atlas_h_stability_drift{perturbation="gaussian_3pct"} 0.0  # Requires test data')
-    
+
     # Config thresholds (for reference)
     from atlas.configs import ConfigLoader
     h_coherence_cfg = ConfigLoader.get_h_coherence_targets()
     h_stability_cfg = ConfigLoader.get_h_stability_targets()
-    
+
     lines.append("\n# HELP atlas_h_coherence_target Target threshold for H-Coherence")
     lines.append("# TYPE atlas_h_coherence_target gauge")
     lines.append(f'atlas_h_coherence_target{{level_pair="sent_to_para"}} {h_coherence_cfg["sent_to_para"]}')
     lines.append(f'atlas_h_coherence_target{{level_pair="para_to_doc"}} {h_coherence_cfg["para_to_doc"]}')
-    
+
     lines.append("\n# HELP atlas_h_stability_max_drift Maximum acceptable drift")
     lines.append("# TYPE atlas_h_stability_max_drift gauge")
     lines.append(f'atlas_h_stability_max_drift {h_stability_cfg["max_drift"]}')
-    
+
     return "\n".join(lines) + "\n"
 
 
@@ -330,11 +330,11 @@ async def metrics(request: Request) -> str:
 async def http_exception_handler(request: Request, exc: HTTPException) -> ErrorResponse:
     """
     Convert HTTPException to ErrorResponse schema.
-    
+
     Args:
         request: FastAPI request object
         exc: HTTPException with status_code and detail
-    
+
     Returns:
         ErrorResponse with error code, message, timestamp
     """
@@ -350,11 +350,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> ErrorR
 async def generic_exception_handler(request: Request, exc: Exception) -> ErrorResponse:
     """
     Convert generic Exception to ErrorResponse schema.
-    
+
     Args:
         request: FastAPI request object
         exc: Any unhandled exception
-    
+
     Returns:
         ErrorResponse with error=INTERNAL_ERROR
     """
@@ -374,10 +374,10 @@ async def generic_exception_handler(request: Request, exc: Exception) -> ErrorRe
 def get_router() -> APIRouter:
     """
     Get configured API router.
-    
+
     Returns:
         APIRouter with all endpoints registered
-    
+
     Notes:
         - Call this from main FastAPI app to mount routes
         - CORS/logging configured at app level (see routes.yaml defaults)

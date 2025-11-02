@@ -22,15 +22,15 @@ def classify_backpressure(
     threshold_reject: int = 5000
 ) -> str:
     """Classify backpressure based on token count
-    
+
     Args:
         tokens: Current token count in context
         threshold_ok: Normal operation threshold (default: 2000)
         threshold_reject: Rejection threshold (default: 5000)
-    
+
     Returns:
         "ok" | "slow" | "reject"
-    
+
     Examples:
         >>> classify_backpressure(1000)
         'ok'

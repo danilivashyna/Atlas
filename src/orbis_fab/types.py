@@ -45,7 +45,7 @@ class ZEdge(TypedDict):
 
 class ZSliceLite(TypedDict):
     """Lightweight Z-space slice (no Atlas dependency)
-    
+
     Used by FAB.fill() to populate global/stream windows.
     Phase A: nodes only, edges reserved for future.
     """

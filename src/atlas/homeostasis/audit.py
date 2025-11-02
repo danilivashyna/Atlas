@@ -40,7 +40,7 @@ class AuditEventType(str, Enum):
 class AuditEvent:
     """
     Событие в аудите.
-    
+
     Attributes:
         run_id: ID прогона (связывает цепочку событий)
         event_type: Тип события
@@ -74,16 +74,16 @@ class AuditEvent:
 class AuditLogger:
     """
     Audit Logger для homeostasis loop.
-    
+
     JSONL формат (одна строка = одно событие):
     - Reason → Policy triggered
     - Policy → Decision made
     - Decision → Action started
     - Action → Action completed/failed/skipped
-    
+
     Beta-версия: файловый WAL, простые фильтры.
     """
-    
+
     def __init__(
         self,
         log_dir: Optional[Path] = None,
@@ -91,7 +91,7 @@ class AuditLogger:
     ):
         """
         Инициализация Audit Logger.
-        
+
         Args:
             log_dir: Директория для WAL файлов
             max_file_size_mb: Максимальный размер файла (для ротации)
@@ -99,15 +99,15 @@ class AuditLogger:
         self.log_dir = log_dir or Path("data/homeostasis/audit")
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
-        
+
         # Текущий WAL файл
         self.current_log_file = self._get_current_log_file()
-    
+
     def _get_current_log_file(self) -> Path:
         """Получить текущий WAL файл (или создать новый)."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log_file = self.log_dir / f"audit_{today}.jsonl"
-        
+
         # Проверка размера файла для ротации
         if log_file.exists() and log_file.stat().st_size > self.max_file_size_bytes:
             # Ротация: переименовать в _N.jsonl
@@ -118,25 +118,25 @@ class AuditLogger:
                     log_file.rename(rotated_file)
                     break
                 counter += 1
-        
+
         return log_file
-    
+
     def _write_event(self, event: AuditEvent):
         """Записать событие в WAL."""
         # Конвертация dataclass → dict
         event_dict = asdict(event)
-        
+
         # Конвертация datetime → ISO string
         event_dict["timestamp"] = event.timestamp.isoformat()
-        
+
         # Конвертация enum → string
         if isinstance(event.event_type, AuditEventType):
             event_dict["event_type"] = event.event_type.value
-        
+
         # Запись в файл (append mode)
         with self.current_log_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event_dict, ensure_ascii=False) + "\n")
-    
+
     def log_policy_triggered(
         self,
         run_id: str,
@@ -147,7 +147,7 @@ class AuditLogger:
     ):
         """
         Записать срабатывание политики.
-        
+
         Args:
             run_id: ID прогона
             policy_name: Имя политики
@@ -165,7 +165,7 @@ class AuditLogger:
             metrics=metrics,
         )
         self._write_event(event)
-    
+
     def log_decision_made(
         self,
         decision: ActionDecision,
@@ -173,7 +173,7 @@ class AuditLogger:
     ):
         """
         Записать принятие решения.
-        
+
         Args:
             decision: Решение от DecisionEngine
             metrics: Метрики на момент решения
@@ -191,7 +191,7 @@ class AuditLogger:
             metadata={"action_params": decision.action.params},
         )
         self._write_event(event)
-    
+
     def log_action_started(
         self,
         run_id: str,
@@ -201,7 +201,7 @@ class AuditLogger:
     ):
         """
         Записать начало выполнения действия.
-        
+
         Args:
             run_id: ID прогона
             decision_id: ID решения
@@ -217,7 +217,7 @@ class AuditLogger:
             metrics=metrics,
         )
         self._write_event(event)
-    
+
     def log_action_completed(
         self,
         run_id: str,
@@ -226,7 +226,7 @@ class AuditLogger:
     ):
         """
         Записать успешное завершение действия.
-        
+
         Args:
             run_id: ID прогона
             decision_id: ID решения
@@ -238,7 +238,7 @@ class AuditLogger:
             ActionStatus.SKIPPED: AuditEventType.ACTION_SKIPPED,
             ActionStatus.DRY_RUN: AuditEventType.ACTION_SKIPPED,
         }.get(result.status, AuditEventType.ACTION_COMPLETED)
-        
+
         event = AuditEvent(
             run_id=run_id,
             event_type=event_type,
@@ -255,7 +255,7 @@ class AuditLogger:
             },
         )
         self._write_event(event)
-    
+
     def read_events(
         self,
         run_id: Optional[str] = None,
@@ -266,29 +266,29 @@ class AuditLogger:
     ) -> List[AuditEvent]:
         """
         Прочитать события из WAL.
-        
+
         Args:
             run_id: Фильтр по run_id
             event_type: Фильтр по типу события
             since: Фильтр по времени (от)
             until: Фильтр по времени (до)
             limit: Ограничение на количество событий
-        
+
         Returns:
             Список событий
         """
         events: List[AuditEvent] = []
-        
+
         # Читаем все JSONL файлы в директории
         for log_file in sorted(self.log_dir.glob("audit_*.jsonl")):
             with log_file.open("r", encoding="utf-8") as f:
                 for line in f:
                     try:
                         event_dict = json.loads(line.strip())
-                        
+
                         # Парсинг timestamp
                         timestamp = datetime.fromisoformat(event_dict["timestamp"])
-                        
+
                         # Фильтры
                         if since and timestamp < since:
                             continue
@@ -298,7 +298,7 @@ class AuditLogger:
                             continue
                         if event_type and event_dict.get("event_type") != event_type.value:
                             continue
-                        
+
                         # Конвертация dict → AuditEvent
                         event = AuditEvent(
                             run_id=event_dict["run_id"],
@@ -315,40 +315,40 @@ class AuditLogger:
                             error_message=event_dict.get("error_message"),
                             metadata=event_dict.get("metadata"),
                         )
-                        
+
                         events.append(event)
-                        
+
                         # Limit
                         if limit and len(events) >= limit:
                             return events
-                    
+
                     except (json.JSONDecodeError, KeyError, ValueError):
                         # Skip malformed lines
                         continue
-        
+
         return events
-    
+
     def get_run_summary(self, run_id: str) -> Dict[str, Any]:
         """
         Получить сводку по прогону.
-        
+
         Args:
             run_id: ID прогона
-        
+
         Returns:
             Dict со статистикой прогона
         """
         events = self.read_events(run_id=run_id)
-        
+
         if not events:
             return {"run_id": run_id, "found": False}
-        
+
         policies_triggered = [e for e in events if e.event_type == AuditEventType.POLICY_TRIGGERED]
         decisions_made = [e for e in events if e.event_type == AuditEventType.DECISION_MADE]
         actions_completed = [e for e in events if e.event_type == AuditEventType.ACTION_COMPLETED]
         actions_failed = [e for e in events if e.event_type == AuditEventType.ACTION_FAILED]
         actions_skipped = [e for e in events if e.event_type == AuditEventType.ACTION_SKIPPED]
-        
+
         return {
             "run_id": run_id,
             "found": True,
@@ -362,14 +362,14 @@ class AuditLogger:
             "actions_skipped": len(actions_skipped),
             "success_rate": len(actions_completed) / len(decisions_made) if decisions_made else 0.0,
         }
-    
+
     def get_recent_failures(self, limit: int = 10) -> List[AuditEvent]:
         """
         Получить последние неудачные действия.
-        
+
         Args:
             limit: Ограничение на количество
-        
+
         Returns:
             Список событий ACTION_FAILED
         """
@@ -377,16 +377,16 @@ class AuditLogger:
             event_type=AuditEventType.ACTION_FAILED,
             limit=limit,
         )
-    
+
     def clear_old_logs(self, days: int = 30):
         """
         Очистить старые логи.
-        
+
         Args:
             days: Удалить логи старше N дней
         """
         cutoff = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
-        
+
         for log_file in self.log_dir.glob("audit_*.jsonl"):
             if log_file.stat().st_mtime < cutoff:
                 log_file.unlink()

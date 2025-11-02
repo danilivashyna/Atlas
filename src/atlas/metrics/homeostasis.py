@@ -34,16 +34,16 @@ except ImportError:
 class HomeostasisMetrics:
     """
     Homeostasis metrics collector.
-    
+
     Exports Prometheus metrics for:
     - Decision count (by policy, action_type, status)
     - Action duration (histogram)
     - Repair success ratio
     - Snapshot age
-    
+
     Beta constraint: Stub if prometheus_client not installed.
     """
-    
+
     def __init__(self):
         """Initialize metrics collectors."""
         if not PROMETHEUS_AVAILABLE:
@@ -53,7 +53,7 @@ class HomeostasisMetrics:
             self.repair_success_ratio = None
             self.snapshot_age_seconds = None
             return
-        
+
         # Decision counter
         if Counter is not None:
             self.decision_count_total = Counter(
@@ -63,7 +63,7 @@ class HomeostasisMetrics:
             )
         else:
             self.decision_count_total = None
-        
+
         # Action duration histogram
         if Histogram is not None:
             self.action_duration_seconds = Histogram(
@@ -74,7 +74,7 @@ class HomeostasisMetrics:
             )
         else:
             self.action_duration_seconds = None
-        
+
         # Repair success ratio gauge
         if Gauge is not None:
             self.repair_success_ratio = Gauge(
@@ -83,7 +83,7 @@ class HomeostasisMetrics:
             )
         else:
             self.repair_success_ratio = None
-        
+
         # Snapshot age gauge
         if Gauge is not None:
             self.snapshot_age_seconds = Gauge(
@@ -92,7 +92,7 @@ class HomeostasisMetrics:
             )
         else:
             self.snapshot_age_seconds = None
-    
+
     def record_decision(
         self,
         policy: str,
@@ -101,7 +101,7 @@ class HomeostasisMetrics:
     ) -> None:
         """
         Record a decision.
-        
+
         Args:
             policy: Policy name
             action_type: Action type (rebuild_shard, etc.)
@@ -109,13 +109,13 @@ class HomeostasisMetrics:
         """
         if not PROMETHEUS_AVAILABLE or self.decision_count_total is None:
             return
-        
+
         self.decision_count_total.labels(
             policy=policy,
             action_type=action_type,
             status=status,
         ).inc()
-    
+
     def record_action_duration(
         self,
         action_type: str,
@@ -123,52 +123,52 @@ class HomeostasisMetrics:
     ) -> None:
         """
         Record action duration.
-        
+
         Args:
             action_type: Action type
             duration_seconds: Duration in seconds
         """
         if not PROMETHEUS_AVAILABLE or self.action_duration_seconds is None:
             return
-        
+
         self.action_duration_seconds.labels(action_type=action_type).observe(
             duration_seconds
         )
-    
+
     def update_repair_success_ratio(self, ratio: float) -> None:
         """
         Update repair success ratio.
-        
+
         Args:
             ratio: Success ratio (0.0-1.0)
         """
         if not PROMETHEUS_AVAILABLE or self.repair_success_ratio is None:
             return
-        
+
         self.repair_success_ratio.set(ratio)
-    
+
     def update_snapshot_age(self, age_seconds: float) -> None:
         """
         Update snapshot age.
-        
+
         Args:
             age_seconds: Age of latest snapshot in seconds
         """
         if not PROMETHEUS_AVAILABLE or self.snapshot_age_seconds is None:
             return
-        
+
         self.snapshot_age_seconds.set(age_seconds)
-    
+
     def get_metrics_text(self) -> str:
         """
         Get Prometheus metrics in text format.
-        
+
         Returns:
             str: Prometheus metrics text
         """
         if not PROMETHEUS_AVAILABLE or generate_latest is None:
             return "# Prometheus client not installed\n"
-        
+
         return generate_latest().decode("utf-8")
 
 
@@ -179,13 +179,13 @@ _homeostasis_metrics: Optional[HomeostasisMetrics] = None
 def get_homeostasis_metrics() -> HomeostasisMetrics:
     """
     Get global homeostasis metrics instance.
-    
+
     Returns:
         HomeostasisMetrics: Global instance
     """
     global _homeostasis_metrics  # noqa: PLW0603
-    
+
     if _homeostasis_metrics is None:
         _homeostasis_metrics = HomeostasisMetrics()
-    
+
     return _homeostasis_metrics

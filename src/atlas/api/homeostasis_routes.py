@@ -103,7 +103,7 @@ def _require(obj: Any, name: str) -> Any:
 def create_homeostasis_router() -> APIRouter:
     """
     Create homeostasis router.
-    
+
     Expects app.state to have:
     - policy_engine: PolicyEngine instance
     - action_executor: ActionExecutor instance
@@ -116,7 +116,7 @@ def create_homeostasis_router() -> APIRouter:
     async def policies_test(req: Request, body: PolicyTestRequest) -> PolicyTestResponse:
         """
         Dry-run policy decisions against metrics snapshot.
-        
+
         No side effects, returns list of decisions that would be made.
         Logs POLICY_TRIGGERED and DECISION_MADE to audit if available.
         """
@@ -150,7 +150,7 @@ def create_homeostasis_router() -> APIRouter:
     ) -> ActionResponse:
         """
         Execute or dry-run a homeostasis action.
-        
+
         Default dry_run=true for safety. Set dry_run=false for actual execution.
         Logs ACTION_STARTED, ACTION_SKIPPED/COMPLETED/FAILED to audit.
         """
@@ -236,7 +236,7 @@ def create_homeostasis_router() -> APIRouter:
     ) -> AuditQueryResponse:
         """
         Query audit log (WAL).
-        
+
         Filters: run_id, event_type, time window (since/until ISO8601), limit.
         Returns list of audit events matching criteria.
         """
@@ -261,7 +261,7 @@ def create_homeostasis_router() -> APIRouter:
     ) -> SnapshotCreateResponse:
         """
         Create snapshot of current state.
-        
+
         Includes indices, MANIFEST, SHA256 checksums.
         Returns snapshot_id for future rollback.
         """
@@ -280,7 +280,7 @@ def create_homeostasis_router() -> APIRouter:
     ) -> SnapshotRollbackResponse:
         """
         Rollback to previous snapshot.
-        
+
         Verifies SHA256 checksums before rollback.
         Creates backup of current state before overwriting.
         """

@@ -31,13 +31,13 @@ PRECISION_LEVELS = {
 
 def precision_level(precision: str) -> int:
     """Get numeric level for precision comparison
-    
+
     Args:
         precision: Precision format string (e.g., "mxfp6.0")
-    
+
     Returns:
         Numeric level (0-3), or -1 if unknown
-    
+
     Examples:
         >>> precision_level("mxfp8.0")
         3
@@ -45,7 +45,7 @@ def precision_level(precision: str) -> int:
         0
         >>> precision_level("unknown")
         -1
-    
+
     Note:
         Use this for safe precision comparison instead of string comparison.
         Higher level = higher precision.
@@ -55,13 +55,13 @@ def precision_level(precision: str) -> int:
 
 def assign_precision(score: float) -> str:
     """Assign bit-envelope precision based on node score
-    
+
     Args:
         score: Node relevance score [0.0, 1.0]
-    
+
     Returns:
         Precision format string (mxfp4.12 - mxfp8.0)
-    
+
     Examples:
         >>> assign_precision(0.85)
         'mxfp8.0'
@@ -71,7 +71,7 @@ def assign_precision(score: float) -> str:
         'mxfp5.25'
         >>> assign_precision(0.10)
         'mxfp4.12'
-    
+
     Note:
         Phase A uses simple step function.
         Future: Add hysteresis to prevent oscillation.

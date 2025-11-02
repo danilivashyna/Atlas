@@ -21,7 +21,7 @@ Phase B Components (v0.2 enhancements):
 
 Usage:
     from orbis_fab import FABCore, Budgets, ZSliceLite, Diagnostics
-    
+
     fab = FABCore()
     fab.init_tick(mode="FAB0", budgets={"tokens": 4096, "nodes": 256, "edges": 0, "time_ms": 30})
     fab.fill(z_slice)

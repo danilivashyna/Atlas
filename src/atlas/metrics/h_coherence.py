@@ -25,7 +25,7 @@ from atlas.configs import ConfigLoader
 class HCoherenceResult:
     """
     Result of H-Coherence computation.
-    
+
     Attributes:
         level_pair: Tuple of (lower_level, upper_level)
         coherence: Average cosine similarity
@@ -47,27 +47,27 @@ class HCoherenceResult:
 class HCoherenceMetric:
     """
     H-Coherence metric computation.
-    
+
     Measures alignment between hierarchical levels:
     - Sentence → Paragraph: Do sentence embeddings align with their paragraph?
     - Paragraph → Document: Do paragraph embeddings align with their document?
-    
+
     ⚠️ Safety:
     - Read-only (no state mutation)
     - Config-driven thresholds
     - Deterministic (same vectors → same coherence)
     """
-    
+
     def __init__(self, config: Optional[Dict] = None):
         """
         Initialize H-Coherence metric.
-        
+
         Args:
             config: Optional config dict (defaults to ConfigLoader)
         """
         self.config = config or ConfigLoader.get_metrics_config()
         self.h_coherence_cfg = self.config["h_coherence"]
-    
+
     def compute_sent_to_para(
         self,
         sent_vectors: np.ndarray,
@@ -76,19 +76,19 @@ class HCoherenceMetric:
     ) -> HCoherenceResult:
         """
         Compute H-Coherence for sentence → paragraph.
-        
+
         Args:
             sent_vectors: Sentence-level embeddings (N, dim)
             para_vectors: Paragraph-level embeddings (M, dim)
             sent_to_para_map: Mapping sent_idx → para_idx (length N)
-        
+
         Returns:
             HCoherenceResult with coherence score and status
-        
+
         Notes:
             - Vectors should be L2-normalized
             - coherence = mean(cos(sent_i, para_parent(i)))
-        
+
         Example:
             >>> sent_vecs = np.random.randn(100, 384)  # 100 sentences
             >>> para_vecs = np.random.randn(20, 384)   # 20 paragraphs
@@ -101,26 +101,26 @@ class HCoherenceMetric:
         target = cfg["target"]
         warning = cfg["warning"]
         critical = cfg["critical"]
-        
+
         # Normalize vectors
         sent_vectors = self._normalize(sent_vectors)
         para_vectors = self._normalize(para_vectors)
-        
+
         # Compute coherence
         coherences = []
         for sent_idx, para_idx in enumerate(sent_to_para_map):
             if para_idx < 0 or para_idx >= len(para_vectors):
                 continue  # Skip invalid mappings
-            
+
             sent_vec = sent_vectors[sent_idx]
             para_vec = para_vectors[para_idx]
-            
+
             cos_sim = np.dot(sent_vec, para_vec)
             coherences.append(cos_sim)
-        
+
         # Average coherence
         avg_coherence = float(np.mean(coherences))
-        
+
         # Determine status
         if avg_coherence >= target:
             status = "healthy"
@@ -128,7 +128,7 @@ class HCoherenceMetric:
             status = "warning"
         else:
             status = "critical"
-        
+
         return HCoherenceResult(
             level_pair=("sentence", "paragraph"),
             coherence=avg_coherence,
@@ -138,7 +138,7 @@ class HCoherenceMetric:
             warning=warning,
             critical=critical,
         )
-    
+
     def compute_para_to_doc(
         self,
         para_vectors: np.ndarray,
@@ -147,15 +147,15 @@ class HCoherenceMetric:
     ) -> HCoherenceResult:
         """
         Compute H-Coherence for paragraph → document.
-        
+
         Args:
             para_vectors: Paragraph-level embeddings (N, dim)
             doc_vectors: Document-level embeddings (M, dim)
             para_to_doc_map: Mapping para_idx → doc_idx (length N)
-        
+
         Returns:
             HCoherenceResult with coherence score and status
-        
+
         Notes:
             - Vectors should be L2-normalized
             - coherence = mean(cos(para_i, doc_parent(i)))
@@ -165,26 +165,26 @@ class HCoherenceMetric:
         target = cfg["target"]
         warning = cfg["warning"]
         critical = cfg["critical"]
-        
+
         # Normalize vectors
         para_vectors = self._normalize(para_vectors)
         doc_vectors = self._normalize(doc_vectors)
-        
+
         # Compute coherence
         coherences = []
         for para_idx, doc_idx in enumerate(para_to_doc_map):
             if doc_idx < 0 or doc_idx >= len(doc_vectors):
                 continue  # Skip invalid mappings
-            
+
             para_vec = para_vectors[para_idx]
             doc_vec = doc_vectors[doc_idx]
-            
+
             cos_sim = np.dot(para_vec, doc_vec)
             coherences.append(cos_sim)
-        
+
         # Average coherence
         avg_coherence = float(np.mean(coherences))
-        
+
         # Determine status
         if avg_coherence >= target:
             status = "healthy"
@@ -192,7 +192,7 @@ class HCoherenceMetric:
             status = "warning"
         else:
             status = "critical"
-        
+
         return HCoherenceResult(
             level_pair=("paragraph", "document"),
             coherence=avg_coherence,
@@ -202,17 +202,17 @@ class HCoherenceMetric:
             warning=warning,
             critical=critical,
         )
-    
+
     def _normalize(self, vectors: np.ndarray) -> np.ndarray:
         """
         L2-normalize vectors.
-        
+
         Args:
             vectors: Input vectors (N, dim)
-        
+
         Returns:
             Normalized vectors (N, dim)
-        
+
         Notes:
             - Handles zero vectors (returns unchanged)
             - Same as HNSW normalization
@@ -231,17 +231,17 @@ def compute_h_coherence(
 ) -> Tuple[HCoherenceResult, HCoherenceResult]:
     """
     Compute H-Coherence for both level pairs.
-    
+
     Args:
         sent_vectors: Sentence embeddings (N, 384)
         para_vectors: Paragraph embeddings (M, 384)
         doc_vectors: Document embeddings (K, 768)
         sent_to_para_map: Mapping sent_idx → para_idx
         para_to_doc_map: Mapping para_idx → doc_idx
-    
+
     Returns:
         Tuple of (sent_to_para_result, para_to_doc_result)
-    
+
     Example:
         >>> sent_vecs = np.random.randn(100, 384)
         >>> para_vecs = np.random.randn(20, 384)
@@ -255,13 +255,13 @@ def compute_h_coherence(
         >>> print(f"Para→Doc: {pd_result.coherence:.3f}")
     """
     metric = HCoherenceMetric()
-    
+
     sent_to_para_result = metric.compute_sent_to_para(
         sent_vectors, para_vectors, sent_to_para_map
     )
-    
+
     para_to_doc_result = metric.compute_para_to_doc(
         para_vectors, doc_vectors, para_to_doc_map
     )
-    
+
     return sent_to_para_result, para_to_doc_result

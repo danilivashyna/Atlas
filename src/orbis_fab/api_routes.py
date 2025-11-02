@@ -91,36 +91,36 @@ class ActResponse(BaseModel):
 
 def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
     """Create FAB Shadow Mode API router
-    
+
     Args:
         fab_core: Optional pre-initialized FABCore instance.
                  If None, creates new instance with default config.
-    
+
     Returns:
         FastAPI router with FAB Shadow Mode routes
-    
+
     Example:
         app = FastAPI()
         fab_router = create_fab_router()
         app.include_router(fab_router, prefix="/api/v1/fab", tags=["FAB"])
     """
     router = APIRouter()
-    
+
     # Initialize FABCore (or use provided instance)
     fab = fab_core or FABCore(envelope_mode="legacy")
-    
+
     @router.post("/context/push", response_model=PushContextResponse)
     async def push_context(req: PushContextRequest) -> PushContextResponse:
         """Push Z-slice context into FAB
-        
+
         Executes:
         1. init_tick(mode, budgets)
         2. fill(z_slice)
         3. mix() → get diagnostics
-        
+
         Returns:
             Diagnostics snapshot after processing Z-slice
-        
+
         Example:
             POST /api/v1/fab/context/push
             {
@@ -140,7 +140,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             # Type hint: z_slice is Dict but ZSliceLite is TypedDict, compatible at runtime
             fab.fill(req.z_slice)  # type: ignore[arg-type]
             ctx = fab.mix()
-            
+
             return PushContextResponse(
                 status="ok",
                 tick=fab.current_tick,
@@ -151,17 +151,17 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB push failed: {str(e)}"
             )
-    
+
     @router.get("/context/pull", response_model=PullContextResponse)
     async def pull_context() -> PullContextResponse:
         """Pull current FAB state (windows + diagnostics)
-        
+
         Returns current window sizes, precisions, and diagnostics
         without modifying state.
-        
+
         Returns:
             Current FAB state snapshot
-        
+
         Example:
             GET /api/v1/fab/context/pull
             Response:
@@ -174,7 +174,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
         """
         try:
             ctx = fab.mix()
-            
+
             return PullContextResponse(
                 mode=ctx["mode"],
                 global_size=ctx["global_size"],
@@ -188,20 +188,20 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB pull failed: {str(e)}"
             )
-    
+
     @router.post("/decide", response_model=DecideResponse)
     async def decide(req: DecideRequest) -> DecideResponse:
         """Run FAB decision step (state transitions)
-        
+
         Executes step_stub() with provided metrics to drive
         FAB state machine transitions.
-        
+
         Args:
             req: Metrics (stress, self_presence, error_rate)
-        
+
         Returns:
             Mode after transition + stability status + diagnostics
-        
+
         Example:
             POST /api/v1/fab/decide
             {
@@ -216,10 +216,10 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 self_presence=req.self_presence,
                 error_rate=req.error_rate
             )
-            
+
             # Get current diagnostics
             ctx = fab.mix()
-            
+
             return DecideResponse(
                 mode=result["mode"],
                 stable=result["stable"],
@@ -231,18 +231,18 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB decide failed: {str(e)}"
             )
-    
+
     @router.post("/act", response_model=ActResponse)
     async def act() -> ActResponse:
         """Execute FAB actions (no-op in Shadow Mode)
-        
+
         Placeholder for future Phase 2:
         - Write to Atlas memory
         - Update OneBlock cache
         - Trigger E2 encoder
-        
+
         In Shadow Mode v0.1: returns no-op response.
-        
+
         Returns:
             Shadow mode status message
         """
@@ -250,5 +250,5 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             status="shadow_mode",
             message="No external I/O in Shadow Mode v0.1. Future: Atlas writes, cache updates."
         )
-    
+
     return router

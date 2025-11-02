@@ -17,11 +17,11 @@ from typing import TypedDict, NotRequired
 class ZNode(TypedDict):
     """
     Single node in Z-Space slice.
-    
+
     Required:
         id: Unique node identifier (str)
         score: Relevance score [0.0, 1.0] for ranking
-    
+
     Optional (Phase 2):
         vec: Embedding vector for MMR diversity (list[float])
         metadata: Additional node attributes (dict)
@@ -35,12 +35,12 @@ class ZNode(TypedDict):
 class ZEdge(TypedDict):
     """
     Edge in Z-Space slice graph.
-    
+
     Required:
         src: Source node ID
         dst: Destination node ID
         weight: Edge weight/strength [0.0, 1.0]
-    
+
     Optional:
         rel_type: Relationship type (e.g., "similar", "causal")
     """
@@ -53,7 +53,7 @@ class ZEdge(TypedDict):
 class ZQuotas(TypedDict):
     """
     Resource quotas for Z-Space slice processing.
-    
+
     Limits:
         tokens: Maximum token budget for LLM context
         nodes: Maximum nodes to select (stream + global)
@@ -69,16 +69,16 @@ class ZQuotas(TypedDict):
 class ZSliceLite(TypedDict):
     """
     Lightweight Z-Space slice representation.
-    
+
     Minimal contract for FAB integration without OneBlock dependency.
-    
+
     Fields:
         nodes: List of candidate nodes (scored, optionally with vecs)
         edges: List of edges between nodes
         quotas: Resource limits for selection
         seed: Deterministic seed for reproducibility
         zv: Z-Space version stamp (e.g., "v0.1.0")
-    
+
     Example:
         >>> z_slice: ZSliceLite = {
         ...     "nodes": [

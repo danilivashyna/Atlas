@@ -56,13 +56,13 @@ except Exception:  # ImportError or any initialization error
 
 class FABCore:
     """FAB state machine orchestrator
-    
+
     Manages dual windows (global/stream) and mode transitions.
     Phase A: No external I/O, autonomous operation.
     Phase B: Hysteresis, stability tracking, MMR diversity, deterministic seeding, diagnostics.
     Phase C+: Configurable envelope mode (legacy vs hysteresis rollout).
     """
-    
+
     def __init__(
         self,
         hold_ms: int = 1500,
@@ -119,7 +119,7 @@ class FABCore:
         self_presence_low: float = 0.3
     ):
         """Initialize FAB with configurable envelope behavior and node selection
-        
+
         Args:
             hold_ms: Mode transition hold time (default: 1500ms)
             envelope_mode: Precision assignment mode ('legacy' or 'hysteresis')
@@ -136,33 +136,33 @@ class FABCore:
                 - 'fab': Original FAB selection (score-based sort + MMR)
                 - 'z-space': Use ZSpaceShim for deterministic top-k selection
                 - Phase 2: Enables vec-based MMR when node.vec present
-        
+
         Example:
             # Phase A compatibility (default)
             fab = FABCore()
-            
+
             # Enable hysteresis for production
             fab = FABCore(envelope_mode='hysteresis', hysteresis_dwell=3)
-            
+
             # Deterministic session for testing
             fab = FABCore(session_id='test-session-42')
-            
+
             # Enable Z-Space selector (Phase 2)
             fab = FABCore(selector='z-space', session_id='test-z-space')
         """
         # Phase A state
         self.st = FabState(hold_ms=hold_ms)
-        
+
         # Phase C+ configuration
         if envelope_mode not in ("legacy", "hysteresis"):
             raise ValueError(f"envelope_mode must be 'legacy' or 'hysteresis', got {envelope_mode}")
         self.envelope_mode = envelope_mode
-        
+
         # Phase 2: Node selection strategy
         if selector not in ("fab", "z-space"):
             raise ValueError(f"selector must be 'fab' or 'z-space', got {selector}")
         self.selector = selector
-        
+
         # Phase 2.5: Shadow A/B selector (PR#5)
         if shadow_selector not in ("fab", "z-space"):
             raise ValueError(f"shadow_selector must be 'fab' or 'z-space', got {shadow_selector}")
@@ -173,13 +173,13 @@ class FABCore:
         self.shadow_selector = shadow_selector
         self.ab_last_used: bool = False
         self.ab_last_arm: str = self.selector  # effective selector used in last fill
-        
+
         # PR#5.1: A/B per-arm counters and accumulators
         self.ab_arm_counts: dict[str, int] = {"fab": 0, "z-space": 0}
         self.ab_latency_sum: dict[str, float] = {"fab": 0.0, "z-space": 0.0}
         self.ab_diversity_gain_sum: dict[str, float] = {"fab": 0.0, "z-space": 0.0}
         self._ab_stats_last_tick: int = -1  # guard to avoid double-count per tick
-        
+
         # PR#5.2: EMA and sliding window for z-space metrics
         self.z_ema_alpha: float = 0.1  # EMA smoothing factor (faster reaction)
         self.z_latency_ema: float = 0.0  # Exponential moving average of z_latency_ms
@@ -262,15 +262,15 @@ class FABCore:
         self.self_presence_high: float = float(self_presence_high)
         self.self_presence_low: float = float(self_presence_low)
         self.self_presence_ema: float = 0.0
-        
+
         # Session ID for deterministic seeding (C+.5 enhancement)
         self.session_id = session_id if session_id is not None else f"fab-{secrets.token_hex(4)}"
         self.session_seed = hash_to_seed(self.session_id)  # Cache to avoid rehashing on every fill()
-        
+
         # Phase B components
         self.current_tick = 0
         self.rng: SeededRNG | None = None
-        
+
         # Hysteresis (B.1) - configure based on envelope_mode
         if self.envelope_mode == "legacy":
             # Phase A compatibility: immediate assignment (dwell=0, rate_limit=1)
@@ -286,37 +286,37 @@ class FABCore:
                 rate_limit_ticks=hysteresis_rate_limit,
                 min_stream_for_upgrade=min_stream_for_upgrade
             )
-        
+
         self.hys_state_stream = HysteresisState()
         self.hys_state_global = HysteresisState()
-        
+
         # Stability (B.2) - configure for Phase A compatibility (3 stable ticks)
         self.stab_cfg = StabilityConfig(min_stable_ticks=3)
         self.stable_tracker = StabilityTracker(self.stab_cfg)
-        
+
         # MMR Rebalance (B.3)
         self.mmr_cfg = RebalanceConfig()
         self.mmr_rebalancer = MMRRebalancer(self.mmr_cfg)
-        
+
         # Diagnostics (B.5)
         self.diag = Diagnostics()
-        
+
         # Phase 2: Z-Space diagnostics (PR#2)
         self.z_last_latency_ms: float = 0.0
         self.z_last_diversity_gain: float = 0.0
         self.z_last_baseline_div: float = 0.0  # PR#3: FAB baseline diversity for gain calc
-    
+
     def init_tick(self, *, mode: FabMode, budgets: Budgets) -> None:
         """Initialize tick with fixed budgets
-        
+
         Locks capacity for duration of tick execution.
         Sets window caps based on budgets.
         Phase B: Increments tick counter, updates diagnostics, runs stability tracker.
-        
+
         Args:
             mode: Target FAB mode (FAB0/FAB1/FAB2)
             budgets: Fixed capacity (tokens/nodes/edges/time)
-        
+
         Invariants:
             - budgets.nodes split between global (≤256) and stream (≤128)
             - mode can only change via step_stub() transitions
@@ -325,52 +325,52 @@ class FABCore:
         # Track mode transitions
         prev_mode = self.st.mode
         self.st.mode = mode
-        
+
         # Increment tick and diagnostics
         self.current_tick += 1
         self.diag.inc_ticks()
-        
+
         # PR#5.6: Update policy once per tick (before fills/mix)
         try:
             self._policy_update()
         except Exception:
             pass
-        
+
         if prev_mode != mode:
             self.diag.inc_mode_transitions()
-        
+
         # Calculate window caps respecting total budget
         # Stream gets priority up to 128, rest goes to global up to 256
         max_stream = min(budgets["nodes"], 128)
         remaining_for_global = budgets["nodes"] - max_stream
         max_global = min(remaining_for_global, 256)
-        
+
         self.st.stream_win.cap_nodes = max_stream
         self.st.global_win.cap_nodes = max_global
-        
+
         # Ensure global stays cold by default
         self.st.global_win.precision = "mxfp4.12"
-    
+
     def fill(self, z: ZSliceLite) -> None:
         """Populate windows from Z-slice
-        
+
         Splits nodes by score:
         - High scores → stream (active thought)
         - Low scores → global (background)
-        
+
         Phase B: Deterministic ordering, MMR diversity, hysteresis precision, diagnostics.
         Phase 2: Selector strategy ('fab' or 'z-space' for node selection).
-        
+
         Args:
             z: Z-slice with nodes sorted by score descending
-        
+
         Invariants:
             - stream nodes ≤ stream_win.cap_nodes
             - global nodes ≤ global_win.cap_nodes
             - total nodes ≤ budgets.nodes
         """
         self.diag.inc_fills()
-        
+
         # Route to selector-specific implementation (with Shadow A/B if enabled)
         chosen_selector = self.selector
         self.ab_last_used = False
@@ -406,35 +406,35 @@ class FABCore:
         else:
             # Default: original FAB selection (Phase A/B/C+)
             return self._fill_with_fab_selector(z)
-    
+
     def _fill_with_fab_selector(self, z: ZSliceLite) -> None:
         """Original FAB node selection (score-based sort + MMR).
-        
+
         This preserves Phase A/B/C+ behavior for backward compatibility.
         Used when selector='fab' (default).
-        
+
         Phase 2 PR#2: Resets Z-Space diagnostics (not used in FAB mode)
         """
         # PR#2/PR#3: Reset Z-Space metrics (FAB selector doesn't use them)
         self.z_last_latency_ms = 0.0
         self.z_last_diversity_gain = 0.0
         self.z_last_baseline_div = 0.0
-        
+
         # Initialize deterministic RNG from combined seeds (B.4 + C+.5)
         # Combine: z_slice seed + session_id + current_tick
         z_seed = hash_to_seed(str(z.get("seed", "fab")))
         tick_seed = self.current_tick
-        
+
         # Combine all seeds for single deterministic RNG per tick (session_seed cached in __init__)
         combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
         self.rng = SeededRNG(seed=combined_seed)
-        
+
         nodes = list(z.get("nodes", []))
         if not nodes:
             self.st.stream_win.nodes = []
             self.st.global_win.nodes = []
             return
-        
+
         # Deterministic sort by score (B.4)
         # Convert to (node, score) tuples for deterministic_sort
         from .seeding import deterministic_sort
@@ -446,14 +446,14 @@ class FABCore:
             reverse=True
         )
         nodes_sorted = [item for item, score in sorted_tuples]
-        
+
         # MMR rebalancing for diversity (B.3)
         # Take top candidates for stream (up to 2x cap for rebalancing)
         stream_cap = self.st.stream_win.cap_nodes
         global_cap = self.st.global_win.cap_nodes
-        
+
         candidates_for_stream = nodes_sorted[:min(len(nodes_sorted), stream_cap * 2)]
-        
+
         # Rebalance stream candidates using MMR
         if len(candidates_for_stream) > stream_cap:
             # Convert to (vector, score) for MMR (dummy 1D vectors based on score)
@@ -461,23 +461,23 @@ class FABCore:
                 ([float(node.get("score", 0.0))], node.get("score", 0.0))
                 for node in candidates_for_stream
             ]
-            
+
             # Run MMR rebalancing (returns top-k by rebalanced score)
             rebalanced_results = self.mmr_rebalancer.rebalance_batch(
                 candidates=candidates_mmr,
                 existing_nodes=[],
                 top_k=stream_cap
             )
-            
+
             # Track real MMR penalty stats
             self.diag.add_rebalance_events(self.mmr_rebalancer.stats.nodes_penalized)
-            
+
             # Map rebalanced results back to original nodes
             # Match by position in greedy selection (rebalancer picks incrementally)
             # Since we use dummy 1D vectors [score], match by score value
             rebalanced_stream = []
             selected_scores = {result[1] for result in rebalanced_results}  # base_score from result
-            
+
             for node in candidates_for_stream:
                 if node.get("score", 0.0) in selected_scores:
                     rebalanced_stream.append(node)
@@ -486,21 +486,21 @@ class FABCore:
                     break
         else:
             rebalanced_stream = candidates_for_stream
-        
+
         # Assign to stream window
         self.st.stream_win.nodes = rebalanced_stream[:stream_cap]
-        
+
         # Remaining nodes go to global (skip already selected stream nodes)
         stream_ids = {n["id"] for n in self.st.stream_win.nodes}
         remaining = [n for n in nodes_sorted if n["id"] not in stream_ids]
         self.st.global_win.nodes = remaining[:global_cap]
-        
+
         # Precision assignment for stream (B.1 / Phase C+)
         if self.st.stream_win.nodes:
             stream_size = len(self.st.stream_win.nodes)
             avg_score = sum(n["score"] for n in self.st.stream_win.nodes) / stream_size
             old_precision = self.st.stream_win.precision
-            
+
             if self.envelope_mode == "legacy":
                 # Phase A: immediate precision assignment
                 new_precision = assign_precision(avg_score)
@@ -508,7 +508,7 @@ class FABCore:
                 # Phase C+: hysteresis with dead band + dwell + rate limit
                 # Safety guard: if stream too small, prevent upgrades
                 target_precision = assign_precision(avg_score)
-                
+
                 if stream_size < self.hys_cfg.min_stream_for_upgrade:
                     # Too few samples for confident upgrade
                     # Use precision_level for safe comparison (not lexicographic)
@@ -531,15 +531,15 @@ class FABCore:
                         config=self.hys_cfg,
                         current_tick=self.current_tick
                     )
-            
+
             self.st.stream_win.precision = new_precision
-            
+
             if old_precision != new_precision:
                 self.diag.inc_envelope_changes()
-        
+
         # Global window keeps default cold precision (mxfp4.12)
         self.st.global_win.precision = "mxfp4.12"
-    
+
     def _simulate_fab_stream_diversity(self, z: ZSliceLite, *, combined_seed: int, stream_cap: int) -> float:
         """
         PR#3 helper: локальная симуляция FAB-селектора для оценки baseline diversity
@@ -591,29 +591,29 @@ class FABCore:
         mean_score = sum(scores) / len(scores)
         variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
         return variance
-    
+
     def _fill_with_z_space(self, z: ZSliceLite) -> None:
         """Z-Space node selection (using ZSpaceShim for deterministic top-k).
-        
+
         Phase 2: Uses orbis_z.ZSpaceShim for:
         - Deterministic top-k selection
         - Stream/global pool separation
         - Future: vec-based MMR diversity (when node.vec present)
-        
+
         Args:
             z: Z-slice with nodes (optionally with vec embeddings)
-        
+
         Behavior:
             - selector='z-space': Use ZSpaceShim.select_topk_for_stream()
             - Fallback to score-based if ZSpaceShim unavailable
             - Determinism preserved via combined RNG seed
-        
+
         Phase 2 PR#2: Tracks latency and diversity gain for diagnostics
         Phase 2 PR#5.3: Circuit breaker + hard time budget
         Phase 2 PR#5.4: Adaptive time limit (AIMD)
         """
         import time
-        
+
         # PR#5.4: Combine adaptive limit, hard cap, and external quota
         z_quotas = z.get("quotas", {}) or {}
         quota_ms = float(z_quotas.get("time_ms", float("inf")) or float("inf"))
@@ -625,20 +625,20 @@ class FABCore:
             # Immediate timeout if budget is 0
             if effective_limit_ms <= 0.0:
                 raise TimeoutError("z-space time budget is zero")
-            
+
             # Check ZSpaceShim availability
             if not HAS_ZSPACE:
                 raise RuntimeError("ZSpaceShim unavailable")
-            
+
             # Start latency tracking (PR#2)
             t_start = time.perf_counter()
-            
+
             # Initialize deterministic RNG from combined seeds
             z_seed = hash_to_seed(str(z.get("seed", "fab")))
             tick_seed = self.current_tick
             combined_seed = combine_seeds(z_seed, self.session_seed, tick_seed)
             self.rng = SeededRNG(seed=combined_seed)
-            
+
             # PR#3: baseline FAB diversity
             stream_cap = self.st.stream_win.cap_nodes
             baseline_div = self._simulate_fab_stream_diversity(
@@ -650,7 +650,7 @@ class FABCore:
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             if elapsed_ms > effective_limit_ms:
                 raise TimeoutError(f"z-space selection time budget exceeded pre-select ({elapsed_ms:.3f}ms > {effective_limit_ms:.3f}ms)")
-            
+
             nodes = list(z.get("nodes", []))
             if not nodes:
                 self.st.stream_win.nodes = []
@@ -659,10 +659,10 @@ class FABCore:
                 self.z_last_baseline_div = 0.0
                 self.z_last_latency_ms = (time.perf_counter() - t_start) * 1000.0
                 return
-            
+
             # Use ZSpaceShim for deterministic selection
             global_cap = self.st.global_win.cap_nodes
-            
+
             # Normalize z so that 'nodes' and 'edges' are concrete lists (not Sequence)
             # This satisfies ZSpaceShim type requirements which expect list[ZNode], not Sequence[ZNode]
             z_norm = {
@@ -674,7 +674,7 @@ class FABCore:
             }
             # Cast to ZSliceLite; suppress type checker warning since we've manually ensured list types
             z_compat_l: ZSliceLite = cast(ZSliceLite, z_norm)  # type: ignore[assignment]
-            
+
             # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
             stream_ids = ZSpaceShim.select_topk_for_stream(z_compat_l, k=stream_cap, rng=self.rng._rng)  # type: ignore[arg-type]
 
@@ -687,14 +687,14 @@ class FABCore:
             global_ids = ZSpaceShim.select_topk_for_global(
                 z_compat_l, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng  # type: ignore[arg-type]
             )
-            
+
             # Map IDs back to nodes
             node_map = {n["id"]: n for n in nodes}
             stream_nodes = [node_map[i] for i in stream_ids if i in node_map]
             global_nodes = [node_map[i] for i in global_ids if i in node_map]
             self.st.stream_win.nodes = stream_nodes
             self.st.global_win.nodes = global_nodes
-            
+
             # Precision assignment for stream (same logic as FAB selector)
             if self.st.stream_win.nodes:
                 stream_size = len(self.st.stream_win.nodes)
@@ -750,16 +750,16 @@ class FABCore:
                 reason = "unavailable"
             else:
                 reason = "exception"
-            
+
             # Open circuit breaker with reason tracking
             self._z_open_circuit_breaker(reason)
-            
+
             # PR#5.4: Adaptive decrease on failure
             try:
                 self._z_adapt(reason if reason in ("timeout", "exception", "unavailable") else "cb_open", None)
             except Exception:
                 pass
-            
+
             try:
                 self.z_last_latency_ms = (time.perf_counter() - locals().get("t_start", time.perf_counter())) * 1000.0
             except Exception:
@@ -767,10 +767,10 @@ class FABCore:
             self.z_last_diversity_gain = 0.0
             self.z_last_baseline_div = 0.0
             return self._fill_with_fab_selector(z)
-    
+
     def _z_adapt(self, outcome: str, observed_latency_ms: float | None = None) -> None:
         """PR#5.4: Adaptive time limit (AIMD-like).
-        
+
         Args:
             outcome: "success", "timeout", "exception", "unavailable", "cb_open"
             observed_latency_ms: Actual latency for success case
@@ -778,10 +778,10 @@ class FABCore:
         if not getattr(self, "z_adapt_enabled", False):
             self.z_limit_last_adjust = "none"
             return
-        
+
         cur = float(getattr(self, "z_limit_current_ms", self.z_time_limit_ms))
         new_val = cur
-        
+
         if outcome == "success" and observed_latency_ms is not None:
             # Additive Increase: if latency <= target, increase limit
             if observed_latency_ms <= self.z_target_latency_ms:
@@ -794,16 +794,16 @@ class FABCore:
             # Multiplicative Decrease: on timeout/exception/unavailable
             new_val = cur * self._policy_md_factor()
             self.z_limit_last_adjust = "decrease"
-        
+
         # Clamp to [min, max] and hard cap
         hard_cap = self.z_time_limit_ms if self.z_time_limit_ms > 0.0 else float("inf")
         cap_upper = min(self.z_limit_max_ms, hard_cap)
         cap_lower = max(0.0, self.z_limit_min_ms)
         new_val = max(cap_lower, min(cap_upper, new_val))
-        
+
         if new_val != cur:
             self.z_limit_current_ms = new_val
-        
+
         # PR#5.5: Meta-learn before tracking history
         try:
             self._z_meta_learn(observed_latency_ms)
@@ -815,28 +815,28 @@ class FABCore:
             self._reward_update()
         except Exception:
             pass
-        
+
         # Track history for observability
         try:
             self.z_limit_history.append(float(self.z_limit_current_ms))
         except Exception:
             pass
-    
+
     def _z_meta_learn(self, observed_latency_ms: float | None = None) -> None:
         """PR#5.5: Meta-adaptation (self-tuning target latency).
-        
+
         Observes limit volatility and latency trends to adjust z_target_latency_ms:
         - tighten: Reduce target when stable and fast (low volatility, non-positive trend)
         - loosen: Increase target when unstable or slowing (high volatility or positive trend)
         - hold: No change
-        
+
         Args:
             observed_latency_ms: Current latency measurement (for EMA tracking)
         """
         if not getattr(self, "z_meta_enabled", False):
             self.z_meta_last_decision = "none"
             return
-        
+
         # Update latency EMA (α=0.2 for responsiveness)
         if observed_latency_ms is not None:
             if self.z_latency_ema == 0.0:
@@ -847,12 +847,12 @@ class FABCore:
                 self.z_latency_ema = self.z_latency_ema + alpha * delta
                 # Update trend (EMA of delta)
                 self.z_meta_trend = self.z_meta_trend + alpha * (delta - self.z_meta_trend)
-        
+
         # Need minimum window for volatility calculation
         if len(self.z_limit_history) < self.z_meta_min_window:
             self.z_meta_last_decision = "none"
             return
-        
+
         # Calculate volatility (coefficient of variation)
         window = list(self.z_limit_history)[-self.z_meta_min_window:]
         try:
@@ -867,11 +867,11 @@ class FABCore:
             self.z_meta_volatility = 0.0
             self.z_meta_last_decision = "none"
             return
-        
+
         # Decision logic
         current_target = self.z_target_latency_ms
         new_target = current_target
-        
+
         # tighten: stable (low volatility) and fast/steady (trend <= 0)
         if self.z_meta_volatility < self.z_meta_vol_threshold and self.z_meta_trend <= 0.0:
             new_target = current_target - self.z_meta_adjust_step_ms
@@ -882,7 +882,7 @@ class FABCore:
             self.z_meta_last_decision = "loosen"
         else:
             self.z_meta_last_decision = "hold"
-        
+
         # PR#5.7: Apply gentle reward pressure to target
         if getattr(self, "reward_enabled", False):
             reward_signal = getattr(self, "reward_ema", 0.0)
@@ -902,14 +902,14 @@ class FABCore:
                 new_target -= self.reward_pressure_target * 0.5  # Gentle nudge
             elif sp_ema <= self.self_presence_low:
                 new_target += self.reward_pressure_target * 0.5
-        
+
         # Clamp to meta target bounds
         min_target, max_target = self.z_meta_target_bounds
         new_target = max(min_target, min(max_target, new_target))
-        
+
         if new_target != current_target:
             self.z_target_latency_ms = new_target
-    
+
     def _policy_update(self) -> None:
         """PR#5.6: Evaluate and (optionally) switch behavioral policy.
 
@@ -967,7 +967,7 @@ class FABCore:
             val = base * self.policy_cons_ai_mult
         else:
             val = base
-        
+
         # PR#5.7: Apply gentle reward pressure to AI step
         if getattr(self, "reward_enabled", False):
             reward_signal = getattr(self, "reward_ema", 0.0)
@@ -977,7 +977,7 @@ class FABCore:
                 val += self.reward_pressure_ai
             elif reward_signal < -0.5:
                 val -= self.reward_pressure_ai
-        
+
         # Clamp to reasonable bounds (min=0.01ms, max=10.0ms)
         return max(0.01, min(10.0, val))
 
@@ -1032,10 +1032,10 @@ class FABCore:
         self.reward_last = r
         self.reward_ema = self.reward_alpha * r + (1.0 - self.reward_alpha) * self.reward_ema
         self.reward_history.append(r)
-    
+
     def _z_open_circuit_breaker(self, reason: str) -> None:
         """PR#5.3.1: Open circuit breaker with tracking.
-        
+
         Args:
             reason: CB trigger reason ('timeout', 'exception', 'unavailable')
         """
@@ -1045,14 +1045,14 @@ class FABCore:
         self.z_cb_open_count += 1
         self.z_cb_reason_counts[reason] = self.z_cb_reason_counts.get(reason, 0) + 1
         self.ab_last_arm = "fab"  # Mark fallback in diagnostics
-    
+
     def _z_percentile(self, values: list[float], p: float) -> float:
         """PR#5.2: Calculate percentile from sorted values.
-        
+
         Args:
             values: List of numeric values
             p: Percentile (0.0-1.0, e.g., 0.95 for p95)
-        
+
         Returns:
             Percentile value, or 0.0 if empty
         """
@@ -1066,32 +1066,32 @@ class FABCore:
             return sorted_vals[-1]
         # Linear interpolation between floor and ceil
         return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
-    
+
     def _ab_safe_avg(self, s: float, n: int) -> float:
         """PR#5.1: Safe division for averages (avoid division by zero)"""
         return s / n if n > 0 else 0.0
 
     def _ab_record_metrics_for_current_tick(self) -> None:
         """PR#5.1/5.2: Update per-arm counters and z-metrics exactly once per tick.
-        
+
         Updates:
         - PR#5.1: A/B arm counters/sums (only if ab_shadow_enabled)
         - PR#5.2: Z-Space EMA/window (always for z-space selector)
-        
+
         Guard (_ab_stats_last_tick) prevents double-counting on multiple mix() calls.
         """
         if self._ab_stats_last_tick == self.current_tick:
             return
-        
+
         arm = self.ab_last_arm
         if arm not in ("fab", "z-space"):
             return
-        
+
         # PR#5.2: Always update EMA/window for z-space (regardless of A/B)
         if arm == "z-space":
             latency = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
             gain = float(getattr(self, "z_last_diversity_gain", 0.0) or 0.0)
-            
+
             # Update EMA (exponential moving average)
             z_count = self.ab_arm_counts.get("z-space", 0)
             if z_count == 0:
@@ -1102,16 +1102,16 @@ class FABCore:
                 # EMA update: new_ema = alpha * new_value + (1 - alpha) * old_ema
                 self.z_latency_ema = self.z_ema_alpha * latency + (1 - self.z_ema_alpha) * self.z_latency_ema
                 self.z_gain_ema = self.z_ema_alpha * gain + (1 - self.z_ema_alpha) * self.z_gain_ema
-            
+
             # Update sliding window (deque auto-evicts oldest when full)
             self.z_latency_window.append(latency)
             self.z_gain_window.append(gain)
-        
+
         # PR#5.1: Update A/B counters/sums (only if A/B enabled)
         if not self.ab_shadow_enabled:
             self._ab_stats_last_tick = self.current_tick
             return
-        
+
         self.ab_arm_counts[arm] += 1
         if arm == "z-space":
             latency = float(getattr(self, "z_last_latency_ms", 0.0) or 0.0)
@@ -1122,17 +1122,17 @@ class FABCore:
             self.ab_latency_sum[arm] += 0.0
             self.ab_diversity_gain_sum[arm] += 0.0
         self._ab_stats_last_tick = self.current_tick
-    
+
     def mix(self) -> dict:
         """Return tick context snapshot (no I/O)
-        
+
         Returns current window state without external calls.
         Phase A: Pure data return, no OneBlock/Atlas interaction.
         Phase B: Includes diagnostics snapshot and gauge metrics.
-        
+
         Returns:
             Context snapshot with mode, window sizes, precision, diagnostics
-        
+
         Example:
             {
                 "mode": "FAB1",
@@ -1146,14 +1146,14 @@ class FABCore:
             }
         """
         self.diag.inc_mixes()
-        
+
         # PR#5.1: update A/B per-arm stats once per tick
         try:
             self._ab_record_metrics_for_current_tick()
         except Exception:
             # diagnostics should not break main flow
             pass
-        
+
         # Update gauges
         self.diag.set_gauge(
             mode=self.st.mode,
@@ -1162,7 +1162,7 @@ class FABCore:
             stable_ticks=self.stable_tracker.state.stable_ticks,
             cooldown_remaining=self.stable_tracker.state.cooldown_remaining
         )
-        
+
         ctx = {
             "mode": self.st.mode,
             "global_size": len(self.st.global_win.nodes),
@@ -1170,20 +1170,20 @@ class FABCore:
             "stream_precision": self.st.stream_win.precision,
             "global_precision": self.st.global_win.precision,
         }
-        
+
         # Add diagnostics snapshot (B.5)
         diag_snapshot = self.diag.snapshot()
-        
+
         # Add derived metrics (C+.6)
         ticks = diag_snapshot["counters"]["ticks"]
         envelope_changes = diag_snapshot["counters"]["envelope_changes"]
-        
+
         # changes_per_1k: envelope changes normalized per 1000 ticks (float for precision)
         if ticks > 0:
             changes_per_1k = (envelope_changes / ticks) * 1000.0
         else:
             changes_per_1k = 0.0
-        
+
         # selected_diversity: variance of scores in stream window (observability metric)
         selected_diversity = 0.0
         if len(self.st.stream_win.nodes) > 1:
@@ -1191,17 +1191,17 @@ class FABCore:
             mean_score = sum(scores) / len(scores)
             variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
             selected_diversity = variance
-        
+
         # MMR rebalance stats (P0.3: diversity observability)
         mmr_nodes_penalized = self.mmr_rebalancer.stats.nodes_penalized
         mmr_avg_penalty = self.mmr_rebalancer.stats.avg_penalty
         mmr_max_similarity = self.mmr_rebalancer.stats.max_similarity
-        
+
         # PR#2/PR#5: Z-Space diagnostics (use ab_last_arm for A/B compatibility)
         z_selector_used = self.ab_last_arm == "z-space"
         z_diversity_gain = self.z_last_diversity_gain
         z_latency_ms = self.z_last_latency_ms
-        
+
         diag_snapshot["derived"] = {
             "changes_per_1k": changes_per_1k,
             "selected_diversity": selected_diversity,
@@ -1267,29 +1267,29 @@ class FABCore:
             "selfloop_enabled": self.selfloop_enabled,
             "self_presence_ema": self.self_presence_ema
         }
-        
+
         ctx["diagnostics"] = diag_snapshot
-        
+
         return ctx
-    
+
     def step_stub(self, *, stress: float, self_presence: float, error_rate: float) -> dict:
         """Update metrics and drive state transitions
-        
+
         Implements FAB state machine logic with stability tracking:
         - FAB0→FAB1: self_presence ≥0.8 ∧ stress <0.7 ∧ ok
         - FAB1→FAB2: stable (via StabilityTracker) ∧ stress <0.5 ∧ ok
         - Degrade→FAB1: stress >0.7 ∨ error_rate >0.05
-        
+
         Phase B: Uses StabilityTracker for exponential cool-down.
-        
+
         Args:
             stress: Load stress [0.0, 1.0]
             self_presence: SELF token presence [0.0, 1.0]
             error_rate: Error rate [0.0, 1.0]
-        
+
         Returns:
             Transition result with new mode and stability status
-        
+
         Example:
             step_stub(stress=0.3, self_presence=0.85, error_rate=0.0)
             -> {"mode": "FAB1", "stable": True}
@@ -1309,17 +1309,17 @@ class FABCore:
                 self.self_presence_ema = sp
             else:
                 self.self_presence_ema += self.self_presence_alpha * (sp - self.self_presence_ema)
-        
+
         # Determine degradation condition
         degraded = (stress > 0.7) or (error_rate > 0.05)
-        
+
         # Update stability tracker (uses stress as score proxy)
         current_score = 1.0 - stress  # Higher score = lower stress
         self.stable_tracker.tick(current_score=current_score, degraded=degraded)
-        
+
         # State machine transitions
         old_mode = self.st.mode
-        
+
         if degraded:
             # Degrade: FAB2 → FAB1 (FAB1 stays FAB1, FAB0 stays FAB0)
             if self.st.mode == "FAB2":
@@ -1331,31 +1331,31 @@ class FABCore:
                 # FAB0 → FAB1: SELF present, low stress (no stability requirement)
                 if self_presence >= 0.8 and stress < 0.7:
                     self.st.mode = "FAB1"
-            
+
             elif self.st.mode == "FAB1":
                 # FAB1 → FAB2: stability achieved, very low stress
                 if self.stable_tracker.is_stable() and stress < 0.5:
                     self.st.mode = "FAB2"
-        
+
         # Track mode transitions
         if old_mode != self.st.mode:
             self.diag.inc_mode_transitions()
-        
+
         # Prepare result
         # Special case: FAB0→FAB1 doesn't require stability, so return 0
         if old_mode == "FAB0" and self.st.mode == "FAB1":
             result_stable_ticks = 0
         else:
             result_stable_ticks = self.stable_tracker.state.stable_ticks
-        
+
         result = {
             "mode": self.st.mode,
             "stable": self.stable_tracker.is_stable(),
             "stable_ticks": result_stable_ticks
         }
-        
+
         # Reset stability counter AFTER preparing result (for FAB0→FAB1 only)
         if old_mode == "FAB0" and self.st.mode == "FAB1":
             self.stable_tracker.state.stable_ticks = 0
-        
+
         return result

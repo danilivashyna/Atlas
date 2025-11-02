@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class EncodeRequest(BaseModel):
     """Request body for /encode endpoint (5D semantic encoding)."""
-    
+
     text: str = Field(
         ...,
         min_length=1,
@@ -39,7 +39,7 @@ class EncodeRequest(BaseModel):
 
 class EncodeMeta(BaseModel):
     """Metadata for encoding operation."""
-    
+
     len: int = Field(..., description="Input text length")
     lang: str = Field(..., description="Detected/used language")
     normalized: bool = Field(..., description="Whether L2-normalized")
@@ -47,7 +47,7 @@ class EncodeMeta(BaseModel):
 
 class EncodeResponse(BaseModel):
     """Response body for /encode endpoint."""
-    
+
     embedding_5d: List[float] = Field(
         ...,
         min_length=5,
@@ -70,7 +70,7 @@ class EncodeResponse(BaseModel):
 
 class DecodeRequest(BaseModel):
     """Request body for /decode endpoint (5D → text reconstruction)."""
-    
+
     embedding_5d: List[float] = Field(
         ...,
         min_length=5,
@@ -90,7 +90,7 @@ class DecodeRequest(BaseModel):
 
 class DecodeResponse(BaseModel):
     """Response body for /decode endpoint."""
-    
+
     text: str = Field(..., description="Reconstructed text (best match)")
     rationale: List[str] = Field(
         ...,
@@ -109,7 +109,7 @@ class DecodeResponse(BaseModel):
 
 class ExplainRequest(BaseModel):
     """Request body for /explain endpoint (5D vector interpretation)."""
-    
+
     embedding_5d: List[float] = Field(
         ...,
         min_length=5,
@@ -123,7 +123,7 @@ class ExplainRequest(BaseModel):
 
 class DimensionExplanation(BaseModel):
     """Explanation for a single dimension."""
-    
+
     name: str = Field(..., description="Dimension name (A-E)")
     weight: float = Field(..., ge=0.0, le=1.0, description="Normalized weight")
     examples: List[str] = Field(..., description="Example concepts for this dimension")
@@ -131,7 +131,7 @@ class DimensionExplanation(BaseModel):
 
 class ExplainResponse(BaseModel):
     """Response body for /explain endpoint."""
-    
+
     dimensions: List[DimensionExplanation] = Field(
         ...,
         min_length=5,
@@ -155,7 +155,7 @@ class ExplainResponse(BaseModel):
 
 class EncodeHierarchicalRequest(BaseModel):
     """Request body for /encode_h endpoint (hierarchical multi-level encoding)."""
-    
+
     text: str = Field(
         ...,
         min_length=1,
@@ -183,7 +183,7 @@ class EncodeHierarchicalRequest(BaseModel):
 
 class EncodeHierarchicalResponse(BaseModel):
     """Response body for /encode_h endpoint."""
-    
+
     levels: Dict[str, List[List[float]]] = Field(
         ...,
         description="Per-level embeddings (arrays of vectors)"
@@ -211,7 +211,7 @@ class EncodeHierarchicalResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     """Request body for /search endpoint (multi-level semantic search)."""
-    
+
     query: str = Field(
         ...,
         min_length=1,
@@ -239,7 +239,7 @@ class SearchRequest(BaseModel):
 
 class SearchHit(BaseModel):
     """Single search result hit."""
-    
+
     level: Literal["sentence", "paragraph", "document"] = Field(
         ...,
         description="Hierarchical level"
@@ -262,7 +262,7 @@ class SearchHit(BaseModel):
 
 class SearchDebug(BaseModel):
     """Debug information for search operation."""
-    
+
     per_level: Optional[Dict[str, List[float]]] = Field(
         default=None,
         description="Per-level scores before fusion"
@@ -275,7 +275,7 @@ class SearchDebug(BaseModel):
 
 class SearchResponse(BaseModel):
     """Response body for /search endpoint."""
-    
+
     hits: List[SearchHit] = Field(..., description="Ranked results after fusion")
     debug: Optional[SearchDebug] = Field(default=None, description="Debug information")
     query_time_ms: Optional[float] = Field(default=None, description="Total query time")
@@ -288,7 +288,7 @@ class SearchResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response body for /health endpoint."""
-    
+
     status: Literal["healthy"] = Field(..., description="Health status")
     version: str = Field(..., description="API version")
     timestamp: datetime = Field(..., description="Current server timestamp")
@@ -301,7 +301,7 @@ class HealthResponse(BaseModel):
 
 class ReadyChecks(BaseModel):
     """Readiness check results."""
-    
+
     indices_loaded: bool = Field(..., description="HNSW/FAISS indices loaded")
     manifest_valid: bool = Field(..., description="MANIFEST integrity verified")
     memory_available: bool = Field(..., description="Sufficient memory available")
@@ -309,7 +309,7 @@ class ReadyChecks(BaseModel):
 
 class ReadyResponse(BaseModel):
     """Response body for /ready endpoint."""
-    
+
     ready: bool = Field(..., description="All checks passed")
     checks: ReadyChecks = Field(..., description="Individual check results")
 
@@ -321,7 +321,7 @@ class ReadyResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Generic error response body."""
-    
+
     error: str = Field(..., description="Error code")
     message: str = Field(..., description="Human-readable message")
     details: Optional[Dict[str, Any]] = Field(
