@@ -109,12 +109,12 @@ def test_hysteresis_target_change_resets_dwell():
     state = HysteresisState(current_precision="mxfp4.12")
 
     # Tick 1: target warm-low (0.50)
-    precision, state = assign_precision_hysteresis(0.50, state, config, current_tick=100)
+    _precision, state = assign_precision_hysteresis(0.50, state, config, current_tick=100)
     assert state.dwell_counter == 1
     assert state.target_precision == "mxfp5.25"
 
     # Tick 2: target changes to warm-high (0.70)
-    precision, state = assign_precision_hysteresis(0.70, state, config, current_tick=101)
+    _precision, state = assign_precision_hysteresis(0.70, state, config, current_tick=101)
     assert state.dwell_counter == 1  # Reset to 1
     assert state.target_precision == "mxfp6.0"  # New target
 

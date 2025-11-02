@@ -14,6 +14,9 @@ from tests.test_helpers import (
 )
 
 
+# pylint: disable=redefined-outer-name
+
+
 @pytest.fixture
 def budgets():
     return {"nodes": 32, "time_ms": 100.0, "tokens": 0, "edges": 0}

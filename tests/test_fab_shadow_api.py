@@ -11,6 +11,9 @@ from fastapi.testclient import TestClient
 from orbis_fab import create_fab_router, FABCore
 
 
+# pylint: disable=redefined-outer-name
+
+
 @pytest.fixture
 def fab_app():
     """Create FastAPI app with FAB router"""
@@ -182,7 +185,7 @@ def test_decide_fab1_to_fab2_stability(client):
 def test_decide_degrade_fab2_to_fab1(client):
     """POST /decide triggers FAB2 → FAB1 on stress spike"""
     # Initialize in FAB2 (manually set)
-    push_resp = client.post(
+    _push_resp = client.post(  # pylint: disable=unused-variable
         "/api/v1/fab/context/push",
         json={
             "mode": "FAB2",
