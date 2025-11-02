@@ -81,7 +81,7 @@ def test_timeout_triggers_cb():
 # PR#5.3.1: CB Reason Tracking Tests
 
 
-def test_cb_reason_timeout(_monkeypatch):
+def test_cb_reason_timeout():
     """CB opened by timeout should set reason='timeout'"""
     fab = FABCore(
         selector="z-space",
