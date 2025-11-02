@@ -97,7 +97,7 @@ ANN_INDEX_PATH = os.getenv("ATLAS_ANN_INDEX_PATH", "/tmp/atlas_nodes.faiss")
 # Get package version
 try:
     APP_VERSION = pkg_version("atlas")
-except Exception:
+except Exception:  # pylint: disable=broad-exception-caught
     APP_VERSION = "0.2.0a1"
 
 # Global state
@@ -118,6 +118,7 @@ def autoscale_controller():
     """Background autoscaling task."""
     from atlas.metrics.mensum import metrics_ns
 
+    # pylint: disable=global-statement
     global autoscale_beam, autoscale_timer  # autoscale_beam is modified, autoscale_timer is reassigned
 
     try:
@@ -135,23 +136,19 @@ def autoscale_controller():
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "down"}
                 )
-                logger.info(
-                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
-                )
+                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
             elif avg_conf < 0.8 and autoscale_beam < 12:
                 old_beam = autoscale_beam
                 autoscale_beam += 1
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "up"}
                 )
-                logger.info(
-                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
-                )
+                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
 
         # Clear recent conf for next period
         autoscale_recent_conf.clear()
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Autoscale error: %s", e)
     finally:
         # Schedule next
@@ -163,6 +160,7 @@ def autoscale_controller():
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # Renamed to avoid shadowing outer 'app'
     """Lifecycle manager for startup/shutdown"""
+    # pylint: disable=global-statement
     global semantic_space, hierarchical_encoder, hierarchical_decoder
 
     # Startup
@@ -185,8 +183,8 @@ async def lifespan(_app: FastAPI):  # Renamed to avoid shadowing outer 'app'
     # (not only at import time) so that TestClient and other runtimes pick up
     # the routes even if the module import happened earlier.
     try:
-        import atlas.api.memory_routes  # noqa: F401,E501
-    except Exception:
+        import atlas.api.memory_routes  # noqa: F401,E501  # pylint: disable=unused-import
+    except Exception:  # pylint: disable=broad-exception-caught
         # Memory package optional - ignore if missing or broken during tests
         logger.debug("Optional memory routes not available at startup")
 
@@ -224,7 +222,7 @@ try:
 
     app.include_router(_mr.router)  # tags=["Memory"] set in router
     logger.info("Memory routes registered")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Memory routes not registered: %s", e)
 
 # Router routes (route, activate)
@@ -233,7 +231,7 @@ try:
 
     app.include_router(_rr.router)  # tags=["Router"] set in router
     logger.info("Router routes registered")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Router routes not registered: %s", e)
 
 # Router batch + index routes (v0.5)
@@ -242,7 +240,7 @@ try:
 
     app.include_router(_rbr.router)  # tags=["Router"] set in router
     logger.info("Router batch routes registered")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Router batch routes not registered: %s", e)
 
 # Reticulum routes (content links, v0.5)
@@ -251,7 +249,7 @@ try:
 
     app.include_router(_reticulum.router)  # tags=["Reticulum"] set in router
     logger.info("Reticulum routes registered")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Reticulum routes not registered: %s", e)
 
 # Homeostasis routes (E4.7 control plane)
@@ -268,7 +266,7 @@ try:
 
     app.include_router(create_homeostasis_router())
     logger.info("Homeostasis routes registered (using stubs)")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Homeostasis routes not registered: %s", e)
 
 # FAB integration routes (v0.1 Shadow Mode)
@@ -277,13 +275,13 @@ try:
 
     app.include_router(create_fab_router())
     logger.info("FAB routes registered (v0.1 Shadow mode)")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("FAB routes not registered: %s", e)
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configure for production
+    allow_origins=["*"],  # TODO: Configure for production  # pylint: disable=fixme
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -294,7 +292,7 @@ try:
     static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-exception-caught
     logger.debug("Static mount skipped: %s", e)
 
 
@@ -412,7 +410,7 @@ async def get_metrics():
         # Include v0.5 mensum metrics
         base_response["v0_5_mensum"] = mensum
         return base_response
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
 
     return MetricsResponse(
@@ -490,7 +488,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
 
         # Parse reasoning
         text = result.get("text", "")
-        # reasoning_text = result.get("reasoning", "")  # TODO: Use for evidence extraction
+        # reasoning_text = result.get("reasoning", "")  # TODO: Use for evidence extraction  # pylint: disable=fixme
 
         # Extract dimension contributions
         dimensions_reasoning = []
@@ -503,7 +501,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
                         dim=i,
                         weight=float(dim_value),
                         label=info.name,
-                        evidence=[],  # TODO: Extract from reasoning text
+                        evidence=[],  # TODO: Extract from reasoning text  # pylint: disable=fixme
                     )
                 )
 
@@ -515,7 +513,7 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
             text=text, reasoning=dimensions_reasoning, explainable=True, trace_id=trace_id
         )
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Decode failed (trace_id=%s): %s", trace_id, e)
 
         # Graceful degradation: return text without reasoning
@@ -523,8 +521,8 @@ async def decode_vector(request: DecodeRequest, req: Request) -> DecodeResponse:
             decoded = semantic_space.decode(np.array(request.vector))
             text = _ensure_str(decoded)  # Convert to str (handles dict/None cases)
             return DecodeResponse(text=text, reasoning=[], explainable=False, trace_id=trace_id)
-        except Exception:
-            raise HTTPException(status_code=500, detail="Decode failed completely")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            raise HTTPException(status_code=500, detail="Decode failed completely") from exc
 
 
 @app.post("/explain", response_model=ExplainResponse, tags=["Semantic Operations"])
@@ -560,7 +558,7 @@ async def explain_text(request: ExplainRequest, req: Request) -> ExplainResponse
                     i=i,
                     label=f"{info.name} ({interpretation})",
                     score=score,
-                    examples=[],  # TODO: Add example words for this dimension
+                    examples=[],  # TODO: Add example words for this dimension  # pylint: disable=fixme
                 )
             )
 
@@ -646,7 +644,7 @@ async def summarize_text(request: SummarizeRequest, req: Request) -> SummarizeRe
 
     except Exception as e:
         logger.error("Summarize failed (trace_id=%s): %s", trace_id, e)
-        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}") from e
 
 
 # Hierarchical API endpoints
@@ -722,7 +720,7 @@ async def decode_hierarchical(
             trace_id=trace_id,
         )
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Hierarchical decode failed (trace_id=%s): %s", trace_id, e)
 
         # Graceful degradation
@@ -733,8 +731,10 @@ async def decode_hierarchical(
             return DecodeHierarchicalResponse(
                 text=result["text"], reasoning=[], explainable=False, trace_id=trace_id
             )
-        except Exception:
-            raise HTTPException(status_code=500, detail="Hierarchical decode failed completely")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            raise HTTPException(
+                status_code=500, detail="Hierarchical decode failed completely"
+            ) from exc
 
 
 @app.post(
@@ -760,9 +760,7 @@ async def manipulate_hierarchical(
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     if hierarchical_encoder is None or hierarchical_decoder is None:
-        raise HTTPException(
-            status_code=500, detail="Hierarchical encoder/decoder not initialized"
-        )
+        raise HTTPException(status_code=500, detail="Hierarchical encoder/decoder not initialized")
 
     try:
         logger.info(
@@ -810,7 +808,7 @@ async def favicon():
         favicon_path = os.path.join(static_dir, "favicon.ico")
         if os.path.exists(favicon_path):
             return FileResponse(favicon_path, media_type="image/x-icon")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
     # Fallback to 404
     raise HTTPException(status_code=404, detail="Favicon not found")
