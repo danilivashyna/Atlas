@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, status
 
 from .core import FABCore
-from .types import Budgets, ZSliceLite, FabMode
+from .types import Budgets, FabMode
 
 
 # === Request/Response Models ===
@@ -159,7 +159,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB push failed: {str(e)}",
-            )
+            ) from e
 
     @router.get("/context/pull", response_model=PullContextResponse)
     async def pull_context() -> PullContextResponse:
@@ -196,7 +196,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB pull failed: {str(e)}",
-            )
+            ) from e
 
     @router.post("/decide", response_model=DecideResponse)
     async def decide(req: DecideRequest) -> DecideResponse:
@@ -237,7 +237,7 @@ def create_fab_router(fab_core: Optional[FABCore] = None) -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"FAB decide failed: {str(e)}",
-            )
+            ) from e
 
     @router.post("/act", response_model=ActResponse)
     async def act() -> ActResponse:

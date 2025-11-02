@@ -1,11 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from __future__ import annotations
 
-import os
 import threading
-import time
 from collections import defaultdict
-from typing import Dict, Tuple
 
 
 class MensumMetrics:
@@ -57,7 +54,7 @@ class MensumMetrics:
             self._hist[(name, self._lab(labels))].append(value)
 
     def to_prom(self, **global_labels) -> str:
-        global_lab = tuple(sorted(global_labels.items())) if global_labels else ()
+        _global_lab = tuple(sorted(global_labels.items())) if global_labels else ()
         # text exposition format
         lines: list[str] = []
         # counters
@@ -125,7 +122,7 @@ _metrics_singleton: MensumMetrics | None = None
 
 
 def metrics() -> MensumMetrics:
-    global _metrics_singleton
+    global _metrics_singleton  # pylint: disable=global-statement
     if _metrics_singleton is None:
         _metrics_singleton = MensumMetrics()
     return _metrics_singleton

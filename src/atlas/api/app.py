@@ -136,14 +136,18 @@ def autoscale_controller():
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "down"}
                 )
-                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
+                logger.info(
+                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
+                )
             elif avg_conf < 0.8 and autoscale_beam < 12:
                 old_beam = autoscale_beam
                 autoscale_beam += 1
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "up"}
                 )
-                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
+                logger.info(
+                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
+                )
 
         # Clear recent conf for next period
         autoscale_recent_conf.clear()
@@ -760,7 +764,9 @@ async def manipulate_hierarchical(
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     if hierarchical_encoder is None or hierarchical_decoder is None:
-        raise HTTPException(status_code=500, detail="Hierarchical encoder/decoder not initialized")
+        raise HTTPException(
+            status_code=500, detail="Hierarchical encoder/decoder not initialized"
+        )
 
     try:
         logger.info(

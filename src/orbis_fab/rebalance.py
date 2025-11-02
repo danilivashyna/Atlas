@@ -32,7 +32,6 @@ Usage:
 
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
-import math
 
 
 @dataclass
@@ -232,6 +231,7 @@ class MMRRebalancer:
                 scored_candidates.append((vec, base_score, rebalanced))
 
             # Pick best rebalanced score
+            # pylint: disable=cell-var-from-loop
             best_idx = max(range(len(scored_candidates)), key=lambda i: scored_candidates[i][2])
             best_vec, best_base, best_rebalanced = scored_candidates[best_idx]
 

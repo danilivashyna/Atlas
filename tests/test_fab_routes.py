@@ -17,7 +17,7 @@ from atlas.api.fab_routes import create_fab_router
 
 
 @pytest.fixture
-def fab_app() -> FastAPI:
+def app() -> FastAPI:  # pylint: disable=redefined-outer-name
     """Create minimal FastAPI app with FAB router."""
     app = FastAPI()
     app.include_router(create_fab_router())
@@ -25,9 +25,9 @@ def fab_app() -> FastAPI:
 
 
 @pytest.fixture
-def client(fab_app: FastAPI) -> TestClient:
+def client(app: FastAPI) -> TestClient:  # pylint: disable=redefined-outer-name
     """Create test client."""
-    return TestClient(fab_app)
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -63,6 +63,8 @@ def fab_context_payload():
 
 class TestFABPush:
     """Tests for POST /api/v1/fab/context/push."""
+
+    # pylint: disable=redefined-outer-name
 
     def test_push_context_dry_run(self, client: TestClient, fab_context_payload):
         """Test FAB context push in dry-run mode (Shadow phase)."""

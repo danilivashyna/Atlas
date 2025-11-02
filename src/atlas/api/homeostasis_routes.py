@@ -137,7 +137,7 @@ def create_homeostasis_router() -> APIRouter:
                     audit.log_decision_made(
                         run_id=body.run_id, policy=d.get("policy"), decision=d
                     )
-            except Exception:  # noqa: BLE001
+            except Exception:  # pylint: disable=broad-exception-caught
                 # Audit failures should not break the operation
                 pass
         return PolicyTestResponse(
@@ -167,7 +167,7 @@ def create_homeostasis_router() -> APIRouter:
                     params=body.params,
                     dry_run=body.dry_run,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:  # pylint: disable=broad-exception-caught
                 # Audit failures should not break the operation
                 pass
 
@@ -181,7 +181,7 @@ def create_homeostasis_router() -> APIRouter:
                             action_type=action_type,
                             reason="dry_run",
                         )
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # pylint: disable=broad-exception-caught
                         # Audit failures should not break the operation
                         pass
                 return ActionResponse(
@@ -200,7 +200,7 @@ def create_homeostasis_router() -> APIRouter:
                     audit.log_action_completed(
                         run_id=body.run_id, action_type=action_type, details=details
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:  # pylint: disable=broad-exception-caught
                     # Audit failures should not break the operation
                     pass
             return ActionResponse(
@@ -218,7 +218,7 @@ def create_homeostasis_router() -> APIRouter:
                     audit.log_action_failed(
                         run_id=body.run_id, action_type=action_type, error=str(e)
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:  # pylint: disable=broad-exception-caught
                     # Audit failures should not break the operation
                     pass
             raise HTTPException(

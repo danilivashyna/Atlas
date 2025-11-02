@@ -37,7 +37,6 @@ from .fab_schemas import (
     FABActResponse,
     FABDecideRequest,
     FABDecideResponse,
-    FABPullRequest,
     FABPullResponse,
     FABPushRequest,
     FABPushResponse,
@@ -79,7 +78,7 @@ def create_fab_router() -> APIRouter:
         """,
     )
     async def push_context(
-        request: Request,
+        _request: Request,  # pylint: disable=unused-argument
         response: Response,
         body: FABPushRequest,
         x_fab_actor: Optional[str] = Header(None, description="Actor ID for rate limiting"),
@@ -117,9 +116,11 @@ def create_fab_router() -> APIRouter:
 
             # Shadow mode: no actual work, just validate + metrics
             logger.info(
-                f"FAB push (shadow): window={context.window.type.value}, "
-                f"tokens={len(context.tokens)}, vectors={len(context.vectors)}, "
-                f"run_id={body.run_id}"
+                "FAB push (shadow): window=%s, tokens=%d, vectors=%d, run_id=%s",
+                context.window.type.value,
+                len(context.tokens),
+                len(context.vectors),
+                body.run_id,
             )
 
             # Set backpressure header
@@ -163,7 +164,7 @@ def create_fab_router() -> APIRouter:
         """
         try:
             # Shadow mode: no FAB cache yet
-            logger.info(f"FAB pull (shadow): window_type={window_type}, id={window_id}")
+            logger.info("FAB pull (shadow): window_type=%s, id=%s", window_type, window_id)
 
             # Would query E2 indices + FAB overlays in Phase 2
             # For now, return empty context
@@ -188,9 +189,7 @@ def create_fab_router() -> APIRouter:
             return FABPullResponse(context=context, cached=False)
 
         except ValueError as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid window parameters: {e}"
-            ) from e
+            raise HTTPException(status_code=400, detail=f"Invalid window parameters: {e}") from e
         except Exception as e:
             logger.exception("FAB pull failed")
             raise HTTPException(status_code=500, detail=f"FAB pull failed: {e}") from e
@@ -222,7 +221,7 @@ def create_fab_router() -> APIRouter:
         Phase 1 (Shadow): Mock decisions, no actual E4 calls.
         """
         try:
-            logger.info(f"FAB decide (shadow): metrics={body.metrics}, run_id={body.run_id}")
+            logger.info("FAB decide (shadow): metrics=%s, run_id=%s", body.metrics, body.run_id)
 
             # Shadow mode: return mock decisions
             # Phase 2 will call actual E4.1/E4.2
@@ -271,12 +270,15 @@ def create_fab_router() -> APIRouter:
             # Shadow mode: always dry_run
             if not body.dry_run:
                 logger.warning(
-                    f"FAB v0.1 Shadow mode: forcing dry_run=true for action={action_type}"
+                    "FAB v0.1 Shadow mode: forcing dry_run=true for action=%s", action_type
                 )
                 body.dry_run = True
 
             logger.info(
-                f"FAB act (shadow): action={action_type}, params={body.params}, run_id={body.run_id}"
+                "FAB act (shadow): action=%s, params=%s, run_id=%s",
+                action_type,
+                body.params,
+                body.run_id,
             )
 
             return FABActResponse(
@@ -288,7 +290,7 @@ def create_fab_router() -> APIRouter:
             )
 
         except Exception as e:
-            logger.exception(f"FAB act failed: action={action_type}")
+            logger.exception("FAB act failed: action=%s", action_type)
             raise HTTPException(
                 status_code=500, detail=f"FAB act failed for {action_type}: {e}"
             ) from e
@@ -313,11 +315,11 @@ def _check_backpressure(actor_id: str, token_count: int) -> BackpressureStatus:
     # Shadow mode: simple thresholds
     # Phase 2+ will use token bucket with E4.2 anti-flapping
     if token_count > 5000:  # Hard limit
-        logger.warning(f"Backpressure REJECT: actor={actor_id}, tokens={token_count}")
+        logger.warning("Backpressure REJECT: actor=%s, tokens=%d", actor_id, token_count)
         return BackpressureStatus.REJECT
 
     if token_count > 2000:  # Soft limit
-        logger.warning(f"Backpressure SLOW: actor={actor_id}, tokens={token_count}")
+        logger.warning("Backpressure SLOW: actor=%s, tokens=%d", actor_id, token_count)
         return BackpressureStatus.SLOW
 
     return BackpressureStatus.OK

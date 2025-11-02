@@ -13,7 +13,7 @@ from .h_stability import (
 # Optional E4.8 homeostasis metrics registry (graceful if module absent)
 try:
     from .homeostasis import HomeostasisMetrics, get_homeostasis_metrics  # type: ignore
-except Exception:  # pragma: no cover
+except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
     HomeostasisMetrics = None  # type: ignore
 
     def get_homeostasis_metrics():  # type: ignore

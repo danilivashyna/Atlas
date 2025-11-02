@@ -1,3 +1,4 @@
+import pytest
 from typing import cast
 from orbis_fab.core import FABCore
 from orbis_fab.types import Budgets, ZSliceLite
@@ -10,11 +11,11 @@ def _budgets(tokens=8000, nodes=8, edges=0, time_ms=50) -> Budgets:
 
 class _BoomShim:
     @staticmethod
-    def select_topk_for_stream(z, k, rng=None):  # pylint: disable=unused-argument
+    def select_topk_for_stream(z, k, rng=None):
         raise RuntimeError("boom")
 
     @staticmethod
-    def select_topk_for_global(z, k, exclude_ids=None, rng=None):  # pylint: disable=unused-argument
+    def select_topk_for_global(z, k, exclude_ids=None, rng=None):
         return []
 
 
@@ -81,7 +82,7 @@ def test_timeout_triggers_cb():
 # PR#5.3.1: CB Reason Tracking Tests
 
 
-def test_cb_reason_timeout(_monkeypatch):  # pylint: disable=unused-argument
+def test_cb_reason_timeout(monkeypatch):
     """CB opened by timeout should set reason='timeout'"""
     fab = FABCore(
         selector="z-space",

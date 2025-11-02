@@ -50,7 +50,8 @@ try:
 
     ZSpaceShim = _ZSpaceShim  # alias for static access
     HAS_ZSPACE = True
-except Exception:  # ImportError or any initialization error
+except Exception:  # pylint: disable=broad-exception-caught
+    # ImportError or any initialization error
     ZSpaceShim = cast(Any, None)  # make symbol present for Pylance/mypy
     HAS_ZSPACE = False
 
@@ -347,7 +348,7 @@ class FABCore:
         # PR#5.6: Update policy once per tick (before fills/mix)
         try:
             self._policy_update()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         if prev_mode != mode:
@@ -693,6 +694,7 @@ class FABCore:
             z_compat_l: ZSliceLite = cast(ZSliceLite, z_norm)  # type: ignore[assignment]
 
             # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
+            # pylint: disable=protected-access
             stream_ids = ZSpaceShim.select_topk_for_stream(z_compat_l, k=stream_cap, rng=self.rng._rng)  # type: ignore[arg-type]
 
             # Timeout check after stream selection
@@ -703,6 +705,7 @@ class FABCore:
                 )
 
             # type: ignore on calls because ZSliceLite TypedDict uses Sequence, but ZSpaceShim expects list
+            # pylint: disable=protected-access
             global_ids = ZSpaceShim.select_topk_for_global(
                 z_compat_l, k=global_cap, exclude_ids=set(stream_ids), rng=self.rng._rng  # type: ignore[arg-type]
             )
@@ -758,10 +761,10 @@ class FABCore:
             # PR#5.4: Adaptive update on success
             try:
                 self._z_adapt("success", self.z_last_latency_ms)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             # PR#5.3.1: Determine CB reason from exception type
             if isinstance(e, TimeoutError):
                 reason = "timeout"
@@ -778,14 +781,14 @@ class FABCore:
                 self._z_adapt(
                     reason if reason in ("timeout", "exception", "unavailable") else "cb_open", None
                 )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
             try:
                 self.z_last_latency_ms = (
                     time.perf_counter() - locals().get("t_start", time.perf_counter())
                 ) * 1000.0
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 self.z_last_latency_ms = 0.0
             self.z_last_diversity_gain = 0.0
             self.z_last_baseline_div = 0.0
@@ -830,19 +833,19 @@ class FABCore:
         # PR#5.5: Meta-learn before tracking history
         try:
             self._z_meta_learn(observed_latency_ms)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         # PR#5.7: Update reward signal after META
         try:
             self._reward_update()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         # Track history for observability
         try:
             self.z_limit_history.append(float(self.z_limit_current_ms))
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     def _z_meta_learn(self, observed_latency_ms: float | None = None) -> None:
@@ -886,7 +889,7 @@ class FABCore:
                 self.z_meta_volatility = std_limit / mean_limit  # Normalized
             else:
                 self.z_meta_volatility = 0.0
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.z_meta_volatility = 0.0
             self.z_meta_last_decision = "none"
             return
@@ -1192,7 +1195,7 @@ class FABCore:
         # PR#5.1: update A/B per-arm stats once per tick
         try:
             self._ab_record_metrics_for_current_tick()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             # diagnostics should not break main flow
             pass
 
