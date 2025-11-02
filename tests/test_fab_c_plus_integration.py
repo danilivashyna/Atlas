@@ -4,6 +4,7 @@ Tests MMR diversity, hysteresis rollout, and API cycles.
 """
 
 import pytest
+from typing import Optional, Any
 from orbis_fab import FABCore, Budgets
 from orbis_fab.api_routes import create_fab_router
 from orbis_fab.envelope import precision_level
@@ -226,6 +227,9 @@ def test_derived_metrics_changes_per_1k():
     fab = FABCore()
     budgets: Budgets = {"tokens": 4096, "nodes": 128, "edges": 0, "time_ms": 30}
     
+    # Initialize for type checker (assigned in loop, used after)
+    ctx: Optional[Any] = None
+    
     # Execute 100 ticks with alternating scores to trigger envelope changes
     for i in range(100):
         score = 0.95 if i % 10 < 5 else 0.30
@@ -240,6 +244,9 @@ def test_derived_metrics_changes_per_1k():
         fab.init_tick(mode="FAB0", budgets=budgets)
         fab.fill(z_slice)  # type: ignore[arg-type]
         ctx = fab.mix()
+    
+    # Ensure ctx was assigned in loop
+    assert ctx is not None, "ctx must be initialized after loop execution"
     
     # Check derived metrics
     diag = ctx["diagnostics"]
@@ -749,6 +756,10 @@ def test_immediate_downgrade_with_rate_limit():
     fab = FABCore(envelope_mode="hysteresis", hysteresis_dwell=2, hysteresis_rate_limit=5)
     budgets: Budgets = {"tokens": 4096, "nodes": 128, "edges": 0, "time_ms": 30}
     
+    # Initialize for type checker
+    ctx: Optional[Any] = None
+    ctx_downgrade: Optional[Any] = None
+    
     # Phase 1: Establish high precision with high scores
     z_high = {
         "nodes": [{"id": f"n{i}", "score": 0.9} for i in range(30)],
@@ -764,6 +775,7 @@ def test_immediate_downgrade_with_rate_limit():
         fab.fill(z_high)  # type: ignore[arg-type]
         ctx = fab.mix()
     
+    assert ctx is not None, "ctx must be assigned in loop"
     high_precision = ctx["stream_precision"]
     assert precision_level(high_precision) >= precision_level("mxfp6.0"), \
         f"Should reach high precision after 10 ticks, got {high_precision}"
@@ -783,6 +795,7 @@ def test_immediate_downgrade_with_rate_limit():
         fab.fill(z_low)  # type: ignore[arg-type]
         ctx_downgrade = fab.mix()
     
+    assert ctx_downgrade is not None, "ctx_downgrade must be assigned in loop"
     downgraded_precision = ctx_downgrade["stream_precision"]
     assert precision_level(downgraded_precision) < precision_level(high_precision), \
         f"Should downgrade from {high_precision} to lower after dwell, got {downgraded_precision}"
@@ -808,12 +821,14 @@ def test_immediate_downgrade_with_rate_limit():
         f"Should maintain precision within rate_limit, got {ctx_blocked['stream_precision']}"
     
     # Phase 4: Wait for rate_limit to expire (simulate 5+ ticks)
+    ctx_after_limit: Optional[Any] = None
     for _ in range(6):
         fab.init_tick(mode="FAB0", budgets=budgets)
         fab.fill(z_very_low)  # type: ignore[arg-type]
         ctx_after_limit = fab.mix()
     
     # Now should be at minimum precision
+    assert ctx_after_limit is not None, "ctx_after_limit must be assigned after loop"
     assert ctx_after_limit["stream_precision"] == "mxfp4.12", \
         f"After rate_limit, should reach minimum precision, got {ctx_after_limit['stream_precision']}"
 
