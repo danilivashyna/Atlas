@@ -1,0 +1,111 @@
+name: SELF Experimental Smoke Test
+
+on:
+  push:
+    branches:
+      - exp/self-sandbox
+      - jbarton43/z-space
+    paths:
+      - 'src/orbis_self/**'
+      - 'src/orbis_fab/fab_self_bridge_exp.py'
+      - 'scripts/resonance_test.py'
+      - 'tests/test_self_*.py'
+  pull_request:
+    paths:
+      - 'src/orbis_self/**'
+      - 'src/orbis_fab/fab_self_bridge_exp.py'
+      - 'scripts/resonance_test.py'
+      - 'tests/test_self_*.py'
+  workflow_dispatch:
+
+jobs:
+  self-smoke:
+    name: SELF Resonance Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run SELF unit tests
+        run: |
+          pytest tests/test_self_*.py -v --tb=short --cov=src/orbis_self --cov-report=term-missing
+        env:
+          AURIS_SELF: "on"
+
+      - name: Run resonance smoke test
+        run: |
+          python scripts/resonance_test.py
+        env:
+          AURIS_SELF: "on"
+
+      - name: Validate SELF artifacts
+        run: |
+          echo "=== Checking identity.jsonl ==="
+          if [ -f data/identity.jsonl ]; then
+            echo "✅ identity.jsonl exists"
+            HEARTBEAT_COUNT=$(grep -c '"kind": "heartbeat"' data/identity.jsonl || echo "0")
+            echo "   Heartbeat events: $HEARTBEAT_COUNT"
+            if [ "$HEARTBEAT_COUNT" -ge 5 ]; then
+              echo "✅ Heartbeat count OK (≥5)"
+            else
+              echo "❌ Insufficient heartbeat events (expected ≥5, got $HEARTBEAT_COUNT)"
+              exit 1
+            fi
+          else
+            echo "❌ identity.jsonl not found"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Checking resonance_trace.jsonl ==="
+          if [ -f logs/resonance_trace.jsonl ]; then
+            echo "✅ resonance_trace.jsonl exists"
+            
+            # Проверяем количество записей
+            TRACE_COUNT=$(wc -l < logs/resonance_trace.jsonl)
+            echo "   Trace events: $TRACE_COUNT"
+            
+            if [ "$TRACE_COUNT" -ge 100 ]; then
+              echo "✅ Sufficient trace events (≥100)"
+            else
+              echo "❌ Insufficient trace events (expected ≥100, got $TRACE_COUNT)"
+              exit 1
+            fi
+          else
+            echo "❌ resonance_trace.jsonl not found"
+            exit 1
+          fi
+
+      - name: Upload SELF artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: self-smoke-artifacts
+          path: |
+            data/identity.jsonl
+            logs/resonance_trace.jsonl
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## ✅ SELF Smoke Test Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SELF Framework Status:** Operational" >> $GITHUB_STEP_SUMMARY
+          echo "**Heartbeat Events:** $(grep -c '"kind": "heartbeat"' data/identity.jsonl || echo "0")" >> $GITHUB_STEP_SUMMARY
+          echo "**Resonance Trace:** $(wc -l < logs/resonance_trace.jsonl) events" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🜂 AURIS_HSI – Resonant state protocol initialized." >> $GITHUB_STEP_SUMMARY

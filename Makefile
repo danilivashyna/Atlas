@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Atlas Makefile — quick commands for development & deployment
 
-.PHONY: help venv install test lint format run docker docker-build docker-run validate smoke clean
+.PHONY: help venv install test lint format run docker docker-build docker-run validate smoke clean self-smoke self-test self-clean
 
 help:
 	@echo "Atlas — Semantic Space Control Panel"
@@ -18,6 +18,11 @@ help:
 	@echo "  make docker        Build Docker image"
 	@echo "  make docker-run    Run Docker container (:8010)"
 	@echo "  make clean         Remove cache, venv, __pycache__"
+	@echo ""
+	@echo "SELF Experimental (Phase C):"
+	@echo "  make self-test     Run SELF unit tests (test_self_*.py)"
+	@echo "  make self-smoke    Run SELF resonance smoke test (500 ticks)"
+	@echo "  make self-clean    Remove SELF artifacts (identity.jsonl, resonance_trace.jsonl)"
 	@echo ""
 
 venv:
@@ -74,6 +79,30 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	@echo "✅ Cache cleaned"
+
+# ──────────────────────────────────────────────────────────
+# SELF Experimental Targets (Phase C)
+# ──────────────────────────────────────────────────────────
+
+self-test:
+	@echo "🧪 Running SELF unit tests..."
+	AURIS_SELF=on pytest tests/test_self_*.py -v --tb=short --cov=src/orbis_self --cov-report=term-missing
+	@echo "✅ SELF tests completed"
+
+self-smoke:
+	@echo "🔮 Running SELF resonance smoke test (500 ticks)..."
+	AURIS_SELF=on python scripts/resonance_test.py
+	@echo ""
+	@echo "✅ SELF smoke test completed"
+	@echo "   Artifacts:"
+	@echo "   - data/identity.jsonl (heartbeat log)"
+	@echo "   - logs/resonance_trace.jsonl (resonance metrics)"
+
+self-clean:
+	@echo "🧹 Cleaning SELF artifacts..."
+	rm -f data/identity.jsonl
+	rm -f logs/resonance_trace.jsonl
+	@echo "✅ SELF artifacts removed"
 
 .DEFAULT_GOAL := help
 
