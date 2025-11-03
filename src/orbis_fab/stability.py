@@ -5,12 +5,15 @@ Tracks stability metrics for FAB windows to prevent mode oscillations:
 - Stable ticks counter (consecutive ticks without degradation)
 - Exponential cool-down after degradation events
 - Stability score computation
+- EMA (exponential moving average) for stability_score
+- Degradation events tracking with hourly rate
 
 Usage:
     config = StabilityConfig(
         min_stable_ticks=100,      # Ticks needed for "stable" status
         cooldown_base=2.0,          # Exponential base for cool-down
-        cooldown_max_ticks=10000    # Max cool-down duration
+        cooldown_max_ticks=10000,   # Max cool-down duration
+        ema_decay=0.95              # EMA decay factor
     )
 
     tracker = StabilityTracker(config=config)
@@ -23,8 +26,15 @@ Usage:
     if tracker.is_stable():
         # Allow mode transitions
         pass
+
+    # Get EMA stability score
+    ema_score = tracker.stability_score_ema()  # Smoothed [0.0, 1.0]
+
+    # Get degradation rate
+    events_per_hour = tracker.degradation_events_per_hour()  # events/h
 """
 
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -44,6 +54,9 @@ class StabilityConfig:
 
     degradation_threshold: float = 0.1
     """Score drop threshold to trigger degradation event (10% drop)"""
+
+    ema_decay: float = 0.95
+    """EMA decay factor for stability_score_ema (0.95 = slow adaptation)"""
 
 
 @dataclass
@@ -65,6 +78,12 @@ class StabilityState:
     is_in_cooldown: bool = False
     """Whether currently in cool-down period"""
 
+    stability_score_ema: float = 1.0
+    """Exponential moving average of stability_score [0.0, 1.0]"""
+
+    degradation_timestamps: list[float] = field(default_factory=list)
+    """Timestamps of degradation events (for hourly rate calculation)"""
+
 
 @dataclass
 class StabilityTracker:
@@ -85,6 +104,8 @@ class StabilityTracker:
             - Increments stable_ticks if no degradation
             - Resets stable_ticks and enters cool-down on degradation
             - Decrements cooldown_remaining if in cool-down
+            - Updates stability_score_ema
+            - Records degradation timestamps for hourly rate
         """
         # Auto-detect degradation from score drop
         if self.state.last_score is not None and not degraded:
@@ -103,6 +124,9 @@ class StabilityTracker:
 
         # Handle degradation event
         if degraded:
+            # Record timestamp for hourly rate calculation
+            self.state.degradation_timestamps.append(time.time())
+
             # Reset stable ticks
             self.state.stable_ticks = 0
 
@@ -122,6 +146,13 @@ class StabilityTracker:
             # No degradation: increment stable ticks (if not in cool-down)
             if not self.state.is_in_cooldown:
                 self.state.stable_ticks += 1
+
+        # Update stability_score_ema
+        current_stability = self.stability_score()
+        self.state.stability_score_ema = (
+            self.config.ema_decay * self.state.stability_score_ema
+            + (1 - self.config.ema_decay) * current_stability
+        )
 
     def is_stable(self) -> bool:
         """
@@ -153,9 +184,91 @@ class StabilityTracker:
         ratio = self.state.stable_ticks / max(self.config.min_stable_ticks, 1)
         return min(1.0, ratio)
 
+    def get_stability_score_ema(self) -> float:
+        """
+        Get exponential moving average of stability_score.
+
+        Returns:
+            Smoothed stability score [0.0, 1.0]
+        """
+        return self.state.stability_score_ema
+
+    def degradation_events_per_hour(self) -> float:
+        """
+        Calculate degradation events per hour (sliding 1h window).
+
+        Returns:
+            Number of degradation events in the last hour
+        """
+        now = time.time()
+        one_hour_ago = now - 3600  # 1 hour = 3600 seconds
+
+        # Filter timestamps within last hour
+        recent_events = [ts for ts in self.state.degradation_timestamps if ts >= one_hour_ago]
+
+        # Update state (cleanup old timestamps)
+        self.state.degradation_timestamps = recent_events
+
+        return float(len(recent_events))
+
+    def should_degrade(self, threshold: float = 0.5) -> bool:
+        """
+        Check if FAB mode should degrade based on stability_score_ema.
+
+        Args:
+            threshold: EMA threshold for degradation (default 0.5)
+
+        Returns:
+            True if stability_score_ema < threshold
+        """
+        return self.state.stability_score_ema < threshold
+
+    def recommend_mode(self) -> str:
+        """
+        Recommend FAB mode based on stability_score_ema.
+
+        Returns:
+            "FAB2" (ema >= 0.8) - full precision
+            "FAB1" (0.5 <= ema < 0.8) - degraded precision
+            "FAB0" (ema < 0.5) - safe mode
+        """
+        ema = self.state.stability_score_ema
+
+        if ema >= 0.8:
+            return "FAB2"
+        if ema >= 0.5:
+            return "FAB1"
+        return "FAB0"
+
     def reset(self) -> None:
         """Reset stability state (for testing or manual intervention)"""
         self.state = StabilityState()
+
+    def get_metrics(self) -> dict:
+        """
+        Get comprehensive stability metrics (for diagnostics and Prometheus).
+
+        Returns:
+            Dict with keys:
+                - stability_score: current instantaneous score [0.0, 1.0]
+                - stability_score_ema: EMA smoothed score [0.0, 1.0]
+                - degradation_events_per_hour: events/h in last hour
+                - is_in_cooldown: bool
+                - cooldown_remaining: ticks
+                - degradation_count: total events
+                - stable_ticks: consecutive stable ticks
+                - recommended_mode: "FAB0" | "FAB1" | "FAB2"
+        """
+        return {
+            "stability_score": self.stability_score(),
+            "stability_score_ema": self.state.stability_score_ema,
+            "degradation_events_per_hour": self.degradation_events_per_hour(),
+            "is_in_cooldown": self.state.is_in_cooldown,
+            "cooldown_remaining": self.state.cooldown_remaining,
+            "degradation_count": self.state.degradation_count,
+            "stable_ticks": self.state.stable_ticks,
+            "recommended_mode": self.recommend_mode(),
+        }
 
     def get_cooldown_info(self) -> dict:
         """
@@ -163,6 +276,8 @@ class StabilityTracker:
 
         Returns:
             Dict with keys: is_in_cooldown, cooldown_remaining, degradation_count
+
+        Deprecated: Use get_metrics() instead for comprehensive diagnostics
         """
         return {
             "is_in_cooldown": self.state.is_in_cooldown,
