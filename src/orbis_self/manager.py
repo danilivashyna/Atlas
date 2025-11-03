@@ -91,7 +91,7 @@ class SelfManager:
                 ts=self._now_iso(),
                 kind="mint",
                 token_id=token_id,
-                data=token.as_dict(),
+                data=dict(token.as_dict()),  # Convert SelfScores to dict
             )
         )
 

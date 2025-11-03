@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Atlas Makefile — quick commands for development & deployment
 
-.PHONY: help venv install test lint format run docker docker-build docker-run validate smoke clean self-smoke self-test self-clean
+.PHONY: help venv install test lint format run docker docker-build docker-run validate smoke clean self-smoke self-test self-clean ci cov exp-smoke
 
 help:
 	@echo "Atlas — Semantic Space Control Panel"
@@ -23,6 +23,11 @@ help:
 	@echo "  make self-test     Run SELF unit tests (test_self_*.py)"
 	@echo "  make self-smoke    Run SELF resonance smoke test (500 ticks)"
 	@echo "  make self-clean    Remove SELF artifacts (identity.jsonl, resonance_trace.jsonl)"
+	@echo ""
+	@echo "Phase B CI (local parity):"
+	@echo "  make ci            Run full CI suite (lint + test + exp-smoke)"
+	@echo "  make cov           Run coverage with threshold gates"
+	@echo "  make exp-smoke     Run experimental smoke tests (SELF + Stability + Hysteresis)"
 	@echo ""
 
 venv:
@@ -103,6 +108,32 @@ self-clean:
 	rm -f data/identity.jsonl
 	rm -f logs/resonance_trace.jsonl
 	@echo "✅ SELF artifacts removed"
+
+# ──────────────────────────────────────────────────────────
+# Phase B CI Targets (local parity)
+# ──────────────────────────────────────────────────────────
+
+ci: lint test exp-smoke
+	@echo "✅ Full CI suite passed"
+
+cov:
+	@echo "📊 Running coverage with threshold gates..."
+	AURIS_SELF=off AURIS_STABILITY=off AURIS_HYSTERESIS=off AURIS_METRICS_EXP=off \
+	  pytest --cov=src --cov-report=term-missing --cov-report=json
+	@python -c 'import json; data = json.load(open("coverage.json")); tot = data["totals"]["percent_covered"]; print(f"Total coverage: {tot:.1f}%"); assert tot >= 85.0, f"Total coverage {tot}% < 85%"'
+	@echo "✅ Coverage gates passed"
+
+exp-smoke:
+	@echo "🔬 Running experimental smoke tests..."
+	@mkdir -p logs data
+	@echo "  → SELF resonance..."
+	@AURIS_SELF=on python scripts/resonance_test.py
+	@test -f data/identity.jsonl || (echo "❌ identity.jsonl not found" && exit 1)
+	@python -c 'import re, pathlib; t = pathlib.Path("data/identity.jsonl").read_text(encoding="utf-8"); cnt = len(re.findall(r"\"kind\":\s*\"heartbeat\"", t)); print(f"  ✓ Heartbeats: {cnt}"); assert cnt >= 5, f"heartbeats={cnt} < 5"'
+	@echo "  → Stability/Hysteresis probes..."
+	@AURIS_STABILITY=on AURIS_HYSTERESIS=on AURIS_METRICS_EXP=on python scripts/stability_probe_exp.py
+	@AURIS_STABILITY=on AURIS_HYSTERESIS=on AURIS_METRICS_EXP=on python scripts/hysteresis_probe_exp.py
+	@echo "✅ Experimental smoke tests passed"
 
 .DEFAULT_GOAL := help
 
