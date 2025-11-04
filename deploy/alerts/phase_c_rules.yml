@@ -1,0 +1,179 @@
+# AURIS Phase C — Prometheus Alerting Rules
+# Подключение: prometheus.yml → rule_files: ['deploy/alerts/phase_c_rules.yml']
+
+groups:
+- name: auris-phase-c
+  interval: 30s
+  rules:
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # Stability Alerts
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - alert: AURIS_StabilityEMA_Drop
+    expr: avg_over_time(atlas_stability_score_ema{window_id="global"}[5m]) < 0.5
+    for: 5m
+    labels:
+      severity: warning
+      area: stability
+      phase: C
+    annotations:
+      summary: "Stability EMA dropped below 0.5 for 5 minutes"
+      description: "Current EMA: {{ $value | humanize }} (threshold: 0.5)"
+      runbook: "docs/PHASE_B_TO_C_RUNBOOK.md#rollback-план"
+      action: "Monitor for 10m; if persists → AURIS_STABILITY=off"
+  
+  - alert: AURIS_StabilityEMA_Critical
+    expr: avg_over_time(atlas_stability_score_ema{window_id="global"}[5m]) < 0.3
+    for: 2m
+    labels:
+      severity: critical
+      area: stability
+      phase: C
+    annotations:
+      summary: "Stability EMA critically low (<0.3) for 2 minutes"
+      description: "Current EMA: {{ $value | humanize }} (threshold: 0.3)"
+      action: "IMMEDIATE ROLLBACK: export AURIS_SELF=off; restart service"
+  
+  - alert: AURIS_DegradationEvents_High
+    expr: rate(atlas_stability_degradation_events{window_id="global"}[1h]) > 10
+    for: 10m
+    labels:
+      severity: warning
+      area: stability
+      phase: C
+    annotations:
+      summary: "High degradation event rate (>10/hour)"
+      description: "Rate: {{ $value | humanize }}/hour"
+      action: "Investigate FABCore stress metric; check logs for patterns"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # Hysteresis Alerts
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - alert: AURIS_Hysteresis_Oscillation
+    expr: avg_over_time(atlas_hysteresis_oscillation_rate{window_id="global"}[1m]) > 1.0
+    for: 2m
+    labels:
+      severity: critical
+      area: hysteresis
+      phase: C
+    annotations:
+      summary: "Excessive oscillation rate (>1.0) for 2 minutes"
+      description: "Current rate: {{ $value | humanize }} (SLO: ≤1.0)"
+      action: "ROLLBACK: export AURIS_HYSTERESIS=off; check hysteresis config"
+      runbook: "docs/B1_HYSTERESIS.md#troubleshooting"
+  
+  - alert: AURIS_SwitchRate_High
+    expr: avg_over_time(atlas_hysteresis_switch_rate_per_sec{window_id="global"}[5m]) > 1.0
+    for: 5m
+    labels:
+      severity: warning
+      area: hysteresis
+      phase: C
+    annotations:
+      summary: "Switch rate exceeded SLO (>1.0/sec) for 5 minutes"
+      description: "Current rate: {{ $value | humanize }}/sec (SLO: ≤1.0)"
+      action: "Increase dwell_ticks or rate_limit_ticks in hysteresis config"
+  
+  - alert: AURIS_Hysteresis_Stuck
+    expr: changes(atlas_hysteresis_effective_mode{window_id="global"}[10m]) == 0
+          AND changes(atlas_hysteresis_desired_mode{window_id="global"}[10m]) > 5
+    for: 5m
+    labels:
+      severity: warning
+      area: hysteresis
+      phase: C
+    annotations:
+      summary: "Hysteresis stuck (no effective mode changes despite 5+ desired changes)"
+      description: "Effective mode frozen; desired changed {{ $value }} times in 10m"
+      action: "Check dwell_counter metric; may need config adjustment"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # SELF Alerts (Phase C specific)
+  # ════════════════════════════════════════════════════════════════════════
+  
+  # NOTE: Uncomment when self_stress metric exported to /metrics/exp
+  # - alert: AURIS_Self_Stress_High
+  #   expr: avg_over_time(self_stress{window_id="global"}[5m]) > 0.4
+  #   for: 5m
+  #   labels:
+  #     severity: warning
+  #     area: self
+  #     phase: C
+  #   annotations:
+  #     summary: "SELF stress > 0.4 for 5 minutes"
+  #     description: "Current stress: {{ $value | humanize }} (threshold: 0.4)"
+  #     action: "Reduce AURIS_SELF_CANARY %; inspect resonance_trace.jsonl"
+  
+  # - alert: AURIS_Self_Coherence_Low
+  #   expr: avg_over_time(self_coherence{window_id="global"}[5m]) < 0.8
+  #   for: 5m
+  #   labels:
+  #     severity: warning
+  #     area: self
+  #     phase: C
+  #   annotations:
+  #     summary: "SELF coherence < 0.8 for 5 minutes"
+  #     description: "Current coherence: {{ $value | humanize }} (SLO: ≥0.8)"
+  #     action: "Check identity.jsonl for token fragmentation"
+  
+  # - alert: AURIS_Self_Continuity_Low
+  #   expr: avg_over_time(self_continuity{window_id="global"}[5m]) < 0.9
+  #   for: 5m
+  #   labels:
+  #     severity: critical
+  #     area: self
+  #     phase: C
+  #   annotations:
+  #     summary: "SELF continuity < 0.9 for 5 minutes (identity instability)"
+  #     description: "Current continuity: {{ $value | humanize }} (SLO: ≥0.9)"
+  #     action: "ROLLBACK: export AURIS_SELF=off; analyze resonance logs"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # Metrics Availability
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - alert: AURIS_Metrics_Missing
+    expr: up{job="atlas_exp"} == 0
+    for: 2m
+    labels:
+      severity: critical
+      area: observability
+      phase: C
+    annotations:
+      summary: "/metrics/exp endpoint unreachable for 2 minutes"
+      description: "Prometheus cannot scrape AURIS experimental metrics"
+      action: "Check uvicorn health; verify AURIS_METRICS_EXP=on"
+  
+  - alert: AURIS_Metrics_Stale
+    expr: time() - atlas_stability_score_ema{window_id="global"} > 120
+    for: 5m
+    labels:
+      severity: warning
+      area: observability
+      phase: C
+    annotations:
+      summary: "AURIS metrics stale (no updates for 2+ minutes)"
+      description: "Last update: {{ $value | humanize }}s ago"
+      action: "Check FABCore step_stub() execution; verify hooks active"
+
+# ════════════════════════════════════════════════════════════════════════
+# Auto-Rollback Logic (External Process Integration)
+# ════════════════════════════════════════════════════════════════════════
+#
+# Для автоматического отката при критических алертах, можно использовать:
+# 1) Alertmanager webhook → скрипт меняет env vars + restart
+# 2) Kubernetes HPA/operator реагирует на metrics
+# 3) Простой cron-скрипт проверяет Prometheus API каждые 30s:
+#
+# while true; do
+#   ema=$(curl -s 'http://prom:9090/api/v1/query?query=atlas_stability_score_ema' | jq -r '.data.result[0].value[1]')
+#   if (( $(echo "$ema < 0.3" | bc -l) )); then
+#     echo "CRITICAL: EMA=$ema < 0.3, triggering rollback"
+#     export AURIS_SELF=off
+#     systemctl restart atlas-api
+#     break
+#   fi
+#   sleep 30
+# done
