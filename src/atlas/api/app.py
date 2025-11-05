@@ -136,18 +136,14 @@ def autoscale_controller():
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "down"}
                 )
-                logger.info(
-                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
-                )
+                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
             elif avg_conf < 0.8 and autoscale_beam < 12:
                 old_beam = autoscale_beam
                 autoscale_beam += 1
                 metrics_ns().inc_counter(
                     "autoscale_changes_total", labels={"param": "beam", "direction": "up"}
                 )
-                logger.info(
-                    "autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf
-                )
+                logger.info("autoscale: beam %d→%d (conf=%.3f)", old_beam, autoscale_beam, avg_conf)
 
         # Clear recent conf for next period
         autoscale_recent_conf.clear()
@@ -192,7 +188,50 @@ async def lifespan(_app: FastAPI):  # Renamed to avoid shadowing outer 'app'
         # Memory package optional - ignore if missing or broken during tests
         logger.debug("Optional memory routes not available at startup")
 
+    # ---- Phase C: SELF canary auto-tune (experimental) ----
+    import os
+    import asyncio
+
+    try:
+        if (
+            os.getenv("AURIS_SELF_AUTOTUNE", "on") == "on"
+            and os.getenv("AURIS_SELF", "off") == "on"
+        ):
+            from orbis_self.canary_autotune_exp import (
+                CanaryAutoTuner,
+            )  # import-inside for flag-guarded envs
+
+            _autotune_stop = asyncio.Event()
+
+            async def _autotune_loop():
+                interval = float(os.getenv("AURIS_SELF_AUTOTUNE_INTERVAL", "60.0"))
+                # Best-effort: never raise out of the loop
+                while not _autotune_stop.is_set():
+                    try:
+                        CanaryAutoTuner.check_and_tune()
+                    except Exception:  # pragma: no cover
+                        # swallow errors to keep the service healthy
+                        pass
+                    try:
+                        await asyncio.wait_for(_autotune_stop.wait(), timeout=interval)
+                    except asyncio.TimeoutError:
+                        continue
+
+            _autotune_task = asyncio.create_task(_autotune_loop())
+        else:
+            _autotune_task = None
+    except Exception:
+        _autotune_task = None
+
     yield
+
+    # ---- Phase C: SELF canary auto-tune shutdown ----
+    try:
+        if _autotune_task is not None:
+            _autotune_stop.set()
+            _autotune_task.cancel()
+    except Exception:
+        pass
 
     # Shutdown
     if autoscale_timer:
@@ -290,6 +329,16 @@ try:
     logger.info("Experimental metrics routes registered (Prometheus)")
 except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("Experimental metrics routes not registered: %s", e)
+
+# SELF API routes (Phase C.3, experimental)
+if os.getenv("AURIS_SELF", "off").lower() in ("on", "true", "1"):
+    try:
+        from orbis_self.api_routes_exp import router as self_router
+
+        app.include_router(self_router)  # prefix="/self" уже в роутере
+        logger.info("SELF API routes registered (/self/health, /self/canary)")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.warning("SELF API routes not registered: %s", e)
 
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
@@ -773,9 +822,7 @@ async def manipulate_hierarchical(
     trace_id = getattr(req.state, "trace_id", str(uuid.uuid4()))
 
     if hierarchical_encoder is None or hierarchical_decoder is None:
-        raise HTTPException(
-            status_code=500, detail="Hierarchical encoder/decoder not initialized"
-        )
+        raise HTTPException(status_code=500, detail="Hierarchical encoder/decoder not initialized")
 
     try:
         logger.info(

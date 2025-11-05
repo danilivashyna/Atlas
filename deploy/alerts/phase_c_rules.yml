@@ -1,4 +1,5 @@
 # AURIS Phase C — Prometheus Alerting Rules
+# NOTE: SELF alerts depend on recording rules defined in deploy/alerts/self_recording_rules.yml
 # Подключение: prometheus.yml → rule_files: ['deploy/alerts/phase_c_rules.yml']
 
 groups:
@@ -167,7 +168,7 @@ groups:
   rules:
   
   - alert: AURIS_SELF_Coherence_Drop
-    expr: avg_over_time(self_coherence[5m]) < 0.80
+    expr: self:coherence:5m_avg < 0.80
     for: 5m
     labels:
       severity: warning
@@ -180,7 +181,7 @@ groups:
       action: "Monitor FABCore stress metric; check SELF token history"
   
   - alert: AURIS_SELF_Continuity_Drop
-    expr: avg_over_time(self_continuity[5m]) < 0.90
+    expr: self:continuity:5m_avg < 0.90
     for: 5m
     labels:
       severity: warning
@@ -193,7 +194,7 @@ groups:
       action: "Check SELF heartbeat frequency; verify token updates"
   
   - alert: AURIS_SELF_Stress_High
-    expr: avg_over_time(self_stress[5m]) > 0.30
+    expr: self:stress:5m_avg > 0.30
     for: 5m
     labels:
       severity: warning

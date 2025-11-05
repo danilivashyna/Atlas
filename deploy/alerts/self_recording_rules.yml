@@ -1,0 +1,96 @@
+# AURIS Phase C — Prometheus Recording Rules for SELF Metrics
+# Подключение: prometheus.yml → rule_files: ['deploy/alerts/self_recording_rules.yml']
+#
+# Recording rules предварительно вычисляют агрегаты для снижения нагрузки
+# на Prometheus при выполнении alert queries и Grafana dashboards.
+
+groups:
+- name: self-recording-rules
+  interval: 30s
+  rules:
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # SELF Metrics — 5-minute averages
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - record: self:coherence:5m_avg
+    expr: avg_over_time(self_coherence[5m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:continuity:5m_avg
+    expr: avg_over_time(self_continuity[5m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:presence:5m_avg
+    expr: avg_over_time(self_presence[5m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:stress:5m_avg
+    expr: avg_over_time(self_stress[5m])
+    labels:
+      metric_type: "self"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # SELF Metrics — 30-minute averages (для долгосрочного мониторинга)
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - record: self:coherence:30m_avg
+    expr: avg_over_time(self_coherence[30m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:continuity:30m_avg
+    expr: avg_over_time(self_continuity[30m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:presence:30m_avg
+    expr: avg_over_time(self_presence[30m])
+    labels:
+      metric_type: "self"
+  
+  - record: self:stress:30m_avg
+    expr: avg_over_time(self_stress[30m])
+    labels:
+      metric_type: "self"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # Aggregate SELF Metrics (across all tokens)
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - record: self:coherence:global_avg
+    expr: avg(self:coherence:5m_avg)
+    labels:
+      aggregation: "global"
+  
+  - record: self:continuity:global_avg
+    expr: avg(self:continuity:5m_avg)
+    labels:
+      aggregation: "global"
+  
+  - record: self:stress:global_avg
+    expr: avg(self:stress:5m_avg)
+    labels:
+      aggregation: "global"
+  
+  # ════════════════════════════════════════════════════════════════════════
+  # SLO Compliance (boolean metrics)
+  # ════════════════════════════════════════════════════════════════════════
+  
+  - record: self:slo:coherence_pass
+    expr: self:coherence:5m_avg >= 0.80
+    labels:
+      slo_type: "coherence"
+  
+  - record: self:slo:continuity_pass
+    expr: self:continuity:5m_avg >= 0.90
+    labels:
+      slo_type: "continuity"
+  
+  - record: self:slo:stress_pass
+    expr: self:stress:5m_avg <= 0.30
+    labels:
+      slo_type: "stress"

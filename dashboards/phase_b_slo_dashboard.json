@@ -510,6 +510,47 @@
         },
         "colorMode": "background"
       }
+    },
+    {
+      "id": 901,
+      "type": "timeseries",
+      "title": "SELF Coherence (5m avg)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "targets": [
+        { "expr": "self:coherence:5m_avg", "legendFormat": "coherence", "refId": "A" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 902,
+      "type": "timeseries",
+      "title": "SELF Continuity (5m avg)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "targets": [
+        { "expr": "self:continuity:5m_avg", "legendFormat": "continuity", "refId": "A" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 903,
+      "type": "timeseries",
+      "title": "SELF Stress (5m avg, lower is better)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 46 },
+      "targets": [
+        { "expr": "self:stress:5m_avg", "legendFormat": "stress", "refId": "A" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 0.3 }
+            ]
+          }
+        }
+      }
     }
   ],
   "annotations": {
