@@ -32,6 +32,10 @@ Invariants:
 - No I/O in Phase A (OneBlock/Atlas stubs only)
 """
 
+import os
+import secrets
+from typing import Any, cast
+
 from .types import FabMode, Budgets, ZSliceLite, Metrics
 from .state import FabState
 from .envelope import assign_precision, precision_level  # Phase A precision + level mapper
@@ -40,8 +44,6 @@ from .stability import StabilityConfig, StabilityTracker
 from .rebalance import RebalanceConfig, MMRRebalancer
 from .seeding import SeededRNG, hash_to_seed, combine_seeds
 from .diagnostics import Diagnostics
-import secrets
-from typing import Any, cast
 
 # Phase 2: Z-Space integration
 # Ensure ZSpaceShim is always defined for type-checkers; guard calls with HAS_ZSPACE at runtime.
@@ -320,6 +322,30 @@ class FABCore:
         self.z_last_latency_ms: float = 0.0
         self.z_last_diversity_gain: float = 0.0
         self.z_last_baseline_div: float = 0.0  # PR#3: FAB baseline diversity for gain calc
+
+        # Phase B.2: Runtime StabilityTracker (guarded by AURIS_STABILITY flag)
+        self._stability = None
+        self._last_stability: dict | None = None
+        if os.getenv("AURIS_STABILITY", "off").lower() == "on":
+            try:
+                from orbis_fab.stability_hook_exp import attach_to_fab
+
+                self._stability = attach_to_fab(self)
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Gracefully degrade if hook fails to import/initialize
+                self._stability = None
+
+        # Phase B.1: Hysteresis anti-chatter (guarded by AURIS_HYSTERESIS flag)
+        self._hyst = None
+        self._last_hyst: dict | None = None
+        if os.getenv("AURIS_HYSTERESIS", "off").lower() == "on":
+            try:
+                from orbis_fab.hysteresis_hook_exp import attach_to_fab as attach_hyst
+
+                self._hyst = attach_hyst(self)
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Gracefully degrade if hook fails to import/initialize
+                self._hyst = None
 
     def init_tick(self, *, mode: FabMode, budgets: Budgets) -> None:
         """Initialize tick with fixed budgets
@@ -1370,6 +1396,28 @@ class FABCore:
         # Update stability tracker (uses stress as score proxy)
         current_score = 1.0 - stress  # Higher score = lower stress
         self.stable_tracker.tick(current_score=current_score, degraded=degraded)
+
+        # Phase B.2: Update runtime StabilityTracker (if enabled)
+        if self._stability is not None:
+            try:
+                from orbis_fab.stability_hook_exp import maybe_tick
+
+                metrics = maybe_tick(self, self._stability, window_id="global")
+                if metrics:
+                    self._last_stability = metrics
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass  # Gracefully degrade if metrics fail
+
+        # Phase B.1: Apply hysteresis anti-chatter (if enabled)
+        if self._hyst is not None:
+            try:
+                from orbis_fab.hysteresis_hook_exp import maybe_hyst
+
+                hyst_result = maybe_hyst(self)
+                if hyst_result:
+                    self._last_hyst = hyst_result
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass  # Gracefully degrade if hysteresis fails
 
         # State machine transitions
         old_mode = self.st.mode

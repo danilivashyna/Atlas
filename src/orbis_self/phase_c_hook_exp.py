@@ -83,6 +83,22 @@ def maybe_self_tick(fab_core: "FABCore") -> bool:
             presence=1.0,  # Active in current tick
         )
 
+        # Export SELF metrics to Prometheus (best-effort, fail-safe)
+        try:
+            # Import inside to avoid circular dependencies
+            from atlas.metrics.exp_prom_exporter import update_self_metrics
+
+            update_self_metrics(
+                token_id=token_id,
+                coherence=coherence,
+                continuity=continuity,
+                presence=1.0,
+                stress=stress,
+            )
+        except Exception:
+            # Best-effort: do not fail tick if metrics exporter unavailable
+            pass
+
         # Heartbeat every 50 ticks
         manager.heartbeat(token_id=token_id, every_n=50)
 

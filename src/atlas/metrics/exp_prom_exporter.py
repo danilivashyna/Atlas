@@ -111,6 +111,12 @@ _hyst_last_switch_age: Optional[Gauge] = None
 _hyst_effective_mode: Optional[Gauge] = None
 _hyst_desired_mode: Optional[Gauge] = None
 
+# SELF metrics (Phase C)
+_self_coherence: Optional[Gauge] = None
+_self_continuity: Optional[Gauge] = None
+_self_presence: Optional[Gauge] = None
+_self_stress: Optional[Gauge] = None
+
 
 def is_enabled() -> bool:
     """Check if experimental metrics are enabled."""
@@ -140,6 +146,10 @@ def setup_prometheus_metrics() -> Optional[CollectorRegistry]:
     global _hyst_last_switch_age
     global _hyst_effective_mode
     global _hyst_desired_mode
+    global _self_coherence
+    global _self_continuity
+    global _self_presence
+    global _self_stress
 
     if not METRICS_ENABLED:
         return None
@@ -238,6 +248,35 @@ def setup_prometheus_metrics() -> Optional[CollectorRegistry]:
         registry=_registry,
     )
 
+    # SELF metrics (Phase C)
+    _self_coherence = Gauge(
+        "self_coherence",
+        "SELF coherence score [0.0, 1.0]",
+        ["token_id"],
+        registry=_registry,
+    )
+
+    _self_continuity = Gauge(
+        "self_continuity",
+        "SELF continuity score [0.0, 1.0]",
+        ["token_id"],
+        registry=_registry,
+    )
+
+    _self_presence = Gauge(
+        "self_presence",
+        "SELF presence score [0.0, 1.0]",
+        ["token_id"],
+        registry=_registry,
+    )
+
+    _self_stress = Gauge(
+        "self_stress",
+        "SELF stress metric [0.0, 1.0] (lower is better)",
+        ["token_id"],
+        registry=_registry,
+    )
+
     return _registry
 
 
@@ -320,3 +359,39 @@ def update_hysteresis_metrics(metrics_dict: dict, window_id: str = "global") -> 
 
     _hyst_effective_mode.labels(window_id=window_id).set(effective_mode_numeric)
     _hyst_desired_mode.labels(window_id=window_id).set(desired_mode_numeric)
+
+
+def update_self_metrics(
+    token_id: str,
+    *,
+    coherence: float,
+    continuity: float,
+    presence: float,
+    stress: float,
+) -> None:
+    """
+    Update SELF-related Prometheus metrics.
+
+    Args:
+        token_id: Token identifier (e.g., "global", "fab-default")
+        coherence: SELF coherence score [0.0, 1.0]
+        continuity: SELF continuity score [0.0, 1.0]
+        presence: SELF presence score [0.0, 1.0]
+        stress: SELF stress metric [0.0, 1.0] (lower is better)
+
+    Note:
+        Safe to call even if Prometheus client is stubbed/missing.
+        No-op if AURIS_METRICS_EXP=off.
+    """
+    if not is_enabled():
+        return
+
+    # Update SELF gauges
+    if _self_coherence is not None:
+        _self_coherence.labels(token_id=token_id).set(coherence)
+    if _self_continuity is not None:
+        _self_continuity.labels(token_id=token_id).set(continuity)
+    if _self_presence is not None:
+        _self_presence.labels(token_id=token_id).set(presence)
+    if _self_stress is not None:
+        _self_stress.labels(token_id=token_id).set(stress)

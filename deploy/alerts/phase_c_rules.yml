@@ -159,6 +159,53 @@ groups:
       action: "Check FABCore step_stub() execution; verify hooks active"
 
 # ════════════════════════════════════════════════════════════════════════
+# SELF Alerts (Phase C)
+# ════════════════════════════════════════════════════════════════════════
+
+- name: auris-self-phase-c
+  interval: 30s
+  rules:
+  
+  - alert: AURIS_SELF_Coherence_Drop
+    expr: avg_over_time(self_coherence[5m]) < 0.80
+    for: 5m
+    labels:
+      severity: warning
+      area: self
+      phase: C
+    annotations:
+      summary: "SELF coherence below SLO threshold"
+      description: "Average SELF coherence {{ $value | humanize }} < 0.80 for 5 minutes"
+      runbook: "docs/PHASE_B_TO_C_RUNBOOK.md#self-slo-violations"
+      action: "Monitor FABCore stress metric; check SELF token history"
+  
+  - alert: AURIS_SELF_Continuity_Drop
+    expr: avg_over_time(self_continuity[5m]) < 0.90
+    for: 5m
+    labels:
+      severity: warning
+      area: self
+      phase: C
+    annotations:
+      summary: "SELF continuity below SLO threshold"
+      description: "Average SELF continuity {{ $value | humanize }} < 0.90 for 5 minutes"
+      runbook: "docs/PHASE_B_TO_C_RUNBOOK.md#self-slo-violations"
+      action: "Check SELF heartbeat frequency; verify token updates"
+  
+  - alert: AURIS_SELF_Stress_High
+    expr: avg_over_time(self_stress[5m]) > 0.30
+    for: 5m
+    labels:
+      severity: warning
+      area: self
+      phase: C
+    annotations:
+      summary: "SELF stress above SLO threshold"
+      description: "Average SELF stress {{ $value | humanize }} > 0.30 for 5 minutes"
+      runbook: "docs/PHASE_B_TO_C_RUNBOOK.md#self-slo-violations"
+      action: "Investigate FABCore stress sources; check degradation events"
+
+# ════════════════════════════════════════════════════════════════════════
 # Auto-Rollback Logic (External Process Integration)
 # ════════════════════════════════════════════════════════════════════════
 #

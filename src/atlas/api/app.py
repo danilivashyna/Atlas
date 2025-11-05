@@ -282,6 +282,15 @@ try:
 except Exception as e:  # pylint: disable=broad-exception-caught
     logger.warning("FAB routes not registered: %s", e)
 
+# Experimental metrics routes (Prometheus, Phase B.3)
+try:
+    from atlas.api.exp_metrics_routes import router as exp_metrics_router
+
+    app.include_router(exp_metrics_router, prefix="/metrics/exp")
+    logger.info("Experimental metrics routes registered (Prometheus)")
+except Exception as e:  # pylint: disable=broad-exception-caught
+    logger.warning("Experimental metrics routes not registered: %s", e)
+
 # CORS middleware (configure appropriately for production)
 app.add_middleware(
     CORSMiddleware,
