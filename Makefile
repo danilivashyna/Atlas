@@ -20,9 +20,13 @@ help:
 	@echo "  make clean         Remove cache, venv, __pycache__"
 	@echo ""
 	@echo "SELF Experimental (Phase C):"
-	@echo "  make self-test     Run SELF unit tests (test_self_*.py)"
-	@echo "  make self-smoke    Run SELF resonance smoke test (500 ticks)"
-	@echo "  make self-clean    Remove SELF artifacts (identity.jsonl, resonance_trace.jsonl)"
+	@echo "  make self-test                 Run SELF unit tests (test_self_*.py)"
+	@echo "  make self-smoke                Run SELF resonance smoke test (500 ticks)"
+	@echo "  make self-api                  Start API with SELF + auto-tune (port 8000)"
+	@echo "  make self-api-quick            Start API with SELF, no auto-tune (dev mode)"
+	@echo "  make self-metrics-check        Check SELF metrics endpoints (requires running API)"
+	@echo "  make self-integration-check    Full SELF integration validation"
+	@echo "  make self-clean                Remove SELF artifacts (identity.jsonl, traces)"
 	@echo ""
 	@echo "Phase B CI (local parity):"
 	@echo "  make ci            Run full CI suite (lint + test + exp-smoke)"
@@ -108,6 +112,45 @@ self-clean:
 	rm -f data/identity.jsonl
 	rm -f logs/resonance_trace.jsonl
 	@echo "✅ SELF artifacts removed"
+
+self-api:
+	@echo "🚀 Starting Atlas API with SELF + auto-tune..."
+	@echo "   AURIS_SELF=on"
+	@echo "   AURIS_SELF_CANARY=0.05 (5% sampling)"
+	@echo "   AURIS_SELF_AUTOTUNE=on"
+	@echo "   AURIS_METRICS_EXP=on"
+	@echo "   Endpoints:"
+	@echo "     http://localhost:8000/metrics/exp   (Prometheus metrics)"
+	@echo "     http://localhost:8000/self/health   (SELF status)"
+	@echo "     http://localhost:8000/self/canary   (Canary control)"
+	@echo ""
+	AURIS_SELF=on \
+	AURIS_SELF_CANARY=0.05 \
+	AURIS_SELF_AUTOTUNE=on \
+	AURIS_SELF_AUTOTUNE_INTERVAL=60 \
+	AURIS_STABILITY=on \
+	AURIS_HYSTERESIS=on \
+	AURIS_METRICS_EXP=on \
+	uvicorn atlas.api.app:app --host 0.0.0.0 --port 8000 --log-level info
+
+self-api-quick:
+	@echo "⚡ Quick SELF API start (auto-tune OFF, dev mode)..."
+	AURIS_SELF=on \
+	AURIS_SELF_CANARY=0.05 \
+	AURIS_SELF_AUTOTUNE=off \
+	AURIS_METRICS_EXP=on \
+	uvicorn atlas.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+self-metrics-check:
+	@echo "🔍 Checking SELF metrics export..."
+	@curl -s http://localhost:8000/metrics/exp | grep -E 'self_(coherence|continuity|presence|stress)' || echo "❌ No SELF metrics found. Is API running with AURIS_SELF=on?"
+	@echo ""
+	@echo "✅ Checking /self/health endpoint..."
+	@curl -s http://localhost:8000/self/health | python -m json.tool || echo "❌ /self/health not available"
+
+self-integration-check:
+	@echo "🧪 Running SELF integration check..."
+	@python scripts/self_integration_check.py --api-url http://localhost:8000
 
 # ──────────────────────────────────────────────────────────
 # Phase B CI Targets (local parity)
