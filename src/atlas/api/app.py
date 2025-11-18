@@ -7,6 +7,7 @@ Atlas FastAPI Application
 REST API for semantic space operations with encode, decode, and explain endpoints.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -189,9 +190,7 @@ async def lifespan(_app: FastAPI):  # Renamed to avoid shadowing outer 'app'
         logger.debug("Optional memory routes not available at startup")
 
     # ---- Phase C: SELF canary auto-tune (experimental) ----
-    import os
-    import asyncio
-
+    # Note: os and asyncio already imported at module level
     try:
         if (
             os.getenv("AURIS_SELF_AUTOTUNE", "on") == "on"

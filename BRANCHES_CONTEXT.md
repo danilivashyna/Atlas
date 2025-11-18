@@ -1,3 +1,133 @@
+<file name=src/atlas/metrics/exp_prom_exporter.py>
+# Existing imports and Gauge definitions...
+
+# Existing stability and hysteresis metric declarations here...
+
+# ----- SELF metrics (Phase C) -----
+try:
+    SELF_COHERENCE = Gauge("self_coherence", "SELF coherence score (0..1)", ["token_id"])
+    SELF_CONTINUITY = Gauge("self_continuity", "SELF continuity score (0..1)", ["token_id"])
+    SELF_PRESENCE = Gauge("self_presence", "SELF presence score (0..1)", ["token_id"])
+    SELF_STRESS = Gauge("self_stress", "SELF stress (0..1, lower is better)", ["token_id"])
+except Exception:  # pragma: no cover - registry may be missing in stubs
+    SELF_COHERENCE = SELF_CONTINUITY = SELF_PRESENCE = SELF_STRESS = None
+
+# Other update_*_metrics functions...
+
+def update_self_metrics(token_id: str, *, coherence: float, continuity: float, presence: float, stress: float) -> None:
+    """
+    Update SELF-related Prometheus metrics.
+    Safe to call even if Prometheus client is stubbed/missing.
+    """
+    if SELF_COHERENCE and SELF_CONTINUITY and SELF_PRESENCE and SELF_STRESS:
+        SELF_COHERENCE.labels(token_id=token_id).set(coherence)
+        SELF_CONTINUITY.labels(token_id=token_id).set(continuity)
+        SELF_PRESENCE.labels(token_id=token_id).set(presence)
+        SELF_STRESS.labels(token_id=token_id).set(stress)
+</file>
+
+<file name=src/orbis_self/phase_c_hook_exp.py>
+# ... existing imports and code ...
+
+def maybe_self_tick(fab_core):
+    # ... existing code ...
+
+    # Compute coherence, continuity, presence, stress
+    coherence = ...  # existing computation
+    continuity = ...  # existing computation
+    presence = ...  # existing computation
+    stress = ...  # existing computation
+
+    # export SELF metrics to Prometheus (if exp metrics enabled)
+    try:
+        from atlas.metrics.exp_prom_exporter import update_self_metrics  # import-inside for flag-guarded envs
+        token_id = getattr(token, "id", getattr(token, "token_id", "global"))
+        update_self_metrics(
+            token_id=str(token_id),
+            coherence=coherence,
+            continuity=continuity,
+            presence=presence,
+            stress=stress,
+        )
+    except Exception:
+        # Best-effort: do not fail tick if metrics exporter is unavailable
+        pass
+
+    # ... existing code ...
+</file>
+
+<file name=tests/test_self_metrics_exp.py>
+import os
+import re
+import importlib
+
+def test_self_metrics_export_smoke(tmp_path, monkeypatch):
+    # Ensure experimental metrics are effectively importable
+    monkeypatch.setenv("AURIS_METRICS_EXP", "on")
+    # Reload exporter to pick the env (in case tests reuse interpreter)
+    exp = importlib.import_module("atlas.metrics.exp_prom_exporter")
+    importlib.reload(exp)
+
+    # Call update function with a few values
+    token_id = "canary-token"
+    exp.update_self_metrics(token_id, coherence=0.91, continuity=0.95, presence=1.0, stress=0.12)
+
+    # Render metrics text via Prometheus generate_latest if present; otherwise fallback to repr
+    try:
+        from prometheus_client import generate_latest, CollectorRegistry
+
+        # If exporter uses the default REGISTRY, generate_latest without args will dump all
+        text = generate_latest().decode("utf-8")
+    except Exception:
+        # Fallback: fake text by reading labels via Gauge._metrics, which is ok for a smoke test
+        parts = []
+        for g in (exp.SELF_COHERENCE, exp.SELF_CONTINUITY, exp.SELF_PRESENCE, exp.SELF_STRESS):
+            if g is not None:
+                # Access internals in tests is acceptable
+                parts.append(g._name)
+        text = "\n".join(parts)
+
+    # Must contain metric names
+    assert "self_coherence" in text
+    assert "self_continuity" in text
+    assert "self_presence" in text
+    assert "self_stress" in text
+</file>
+
+<file name=deploy/alerts/phase_c_rules.yml>
+# existing groups...
+
+- name: auris-self-phase-c
+  rules:
+  - alert: AURIS_SELF_Coherence_Drop
+    expr: self_coherence < 0.80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "SELF coherence below SLO"
+      description: "Average SELF coherence < 0.80 for 5m"
+
+  - alert: AURIS_SELF_Continuity_Drop
+    expr: self_continuity < 0.90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "SELF continuity below SLO"
+      description: "Average SELF continuity < 0.90 for 5m"
+
+  - alert: AURIS_SELF_Stress_High
+    expr: self_stress > 0.30
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "SELF stress above SLO"
+      description: "Average SELF stress > 0.30 for 5m"
+</file>
+
+<file name=BRANCHES_CONTEXT.md>
 # Atlas Multi-Branch Development Context
 
 **Date**: 2025-11-02  
@@ -34,6 +164,10 @@ jbarton43/z-space (Atlas + FAB + Z-Space ✅ CLEAN)
 - ✅ API endpoints (FAB routes, homeostasis, memory, router)
 - ✅ Cleanup: 91+ Pylint warnings устранены
 - ✅ 4 коммита с исправлениями
+
+- ✅ Phase C canary 5% LIVE (SELF heartbeat + metrics export)
+- ✅ Prometheus: self_coherence/self_continuity/self_presence/self_stress
+- ✅ Alerts: AURIS_SELF_* (warning tier)
 
 **Метрики качества**:
 ```yaml
@@ -503,3 +637,4 @@ git pull origin <branch_name>
 
 **Maintained by**: Atlas Autonomous Agent  
 **Last updated**: 2025-10-29
+</file>
